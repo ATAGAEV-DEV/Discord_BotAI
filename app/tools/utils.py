@@ -95,8 +95,14 @@ def clean_text(text: str) -> str:
 def replace_emojis(text: str) -> str:
     """Заменяет текстовые представления эмодзи на реальные Discord-эмодзи."""
     for emoji in EMOJIS:
-        pattern = re.compile(rf":\s*{re.escape(emoji.slug)}\s*:")
+        pattern = re.compile(rf":?\s*{re.escape(emoji.slug)}\s*:?")
         text = pattern.sub(emoji.full_code, text)
+
+    f_emoji_code = next((e.full_code for e in EMOJIS if e.slug == "F_"), "")
+    if f_emoji_code:
+        pattern_f = re.compile(r":\s*F\s*:?")
+        text = pattern_f.sub(f_emoji_code, text)
+
     return text
 
 
