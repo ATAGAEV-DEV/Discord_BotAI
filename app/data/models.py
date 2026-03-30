@@ -31,11 +31,16 @@ SCHEMA = "public"
 
 
 def get_engine(schema: str) -> AsyncEngine:
-    """Создает и возвращает асинхронный движок SQLAlchemy с указанной схемой."""
+    """Создаёт и возвращает асинхронный движок SQLAlchemy с указанным схемой.
+
+    Устанавливает параметр search_path в соединении, чтобы все запросы выполнялись
+    в заданной схеме PostgreSQL.
+    """
     return create_async_engine(
         DATABASE_URL,
         connect_args={"server_settings": {"search_path": schema}},
         pool_pre_ping=True,
+        pool_recycle=1800,
     )
 
 
