@@ -40,7 +40,6 @@ EMOJIS = [
     Emoji("Gay", "1101900779033469028", "гей и издевка"),
 ]
 
-EMOJI_MAPPING = {e.tag: e.full_code for e in EMOJIS}
 
 EMOJI_LIST_STRING = "\n".join([e.prompt_line for e in EMOJIS])
 EMOJI_ROAST_STRING = ", ".join([e.roast_line for e in EMOJIS])
