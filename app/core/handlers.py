@@ -122,7 +122,8 @@ async def ai_generate(
         # print(count_tokens(relevant_contexts))
         print(f"Сообщения {messages}")
         print(count_tokens(messages))
-        print(f"Ответ: {emoji_response_text}")
+        print(f"Ответ с эмодзи: {emoji_response_text}")
+        print(f"Ответ от ИИ: {response_text}")
         return emoji_response_text
     except Exception as e:
         print(f"Ошибка при вызове OpenAI API: {e}")
