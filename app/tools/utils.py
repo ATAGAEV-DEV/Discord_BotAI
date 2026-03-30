@@ -4,7 +4,7 @@ from datetime import datetime
 import discord
 import tiktoken
 
-from app.tools.prompt import EMOJI_MAPPING, RANK_CONFIG, SYSTEM_PROMPT, USER_DESCRIPTIONS
+from app.tools.prompt import EMOJIS, RANK_CONFIG, SYSTEM_PROMPT, USER_DESCRIPTIONS
 
 ENCODING = tiktoken.encoding_for_model("gpt-4o-mini")
 
@@ -94,8 +94,9 @@ def clean_text(text: str) -> str:
 
 def replace_emojis(text: str) -> str:
     """Заменяет текстовые представления эмодзи на реальные Discord-эмодзи."""
-    for text_emoji, discord_emoji in EMOJI_MAPPING.items():
-        text = text.replace(text_emoji, discord_emoji)
+    for emoji in EMOJIS:
+        pattern = re.compile(rf":\s*{re.escape(emoji.slug)}\s*:")
+        text = pattern.sub(emoji.full_code, text)
     return text
 
 
