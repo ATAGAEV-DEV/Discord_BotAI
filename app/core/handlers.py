@@ -118,8 +118,8 @@ async def ai_generate(
             {"role": "assistant", "content": cleaned_response_text},
         ]
         await llama_manager.index_messages(server_id, messages_to_index)
-        print(f"Релевантный {relevant_contexts}")
-        print(count_tokens(relevant_contexts))
+        # print(f"Релевантный {relevant_contexts}")
+        # print(count_tokens(relevant_contexts))
         print(f"Сообщения {messages}")
         print(count_tokens(messages))
         print(f"Ответ: {emoji_response_text}")
