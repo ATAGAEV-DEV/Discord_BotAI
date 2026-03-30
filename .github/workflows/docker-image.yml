@@ -1,102 +1,47 @@
-name: Deploy to Remote Server
+name: Deploy to Local Server
 
 on:
   workflow_dispatch:
   # push:
   #   branches: [ "main" ]
-  # pull_request:
-  #   branches: [ "main" ]
 
 jobs:
   build_deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
-      # Шаг 1: Клонирование репозитория
-      - uses: actions/checkout@v4
+      # Шаг 1: Скачиваем свежий код прямо на домашний сервер
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      # Шаг 2: Установка Python и зависимостей
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.13'
-
-      # Шаг 3: Установка зависимостей Python
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-
-      # Шаг 4: Проверка работы скрипта Python
-      - name: Test Python script
-        env:
-          DC_TOKEN_TEST: ${{ secrets.DC_TOKEN_TEST }}
-          WEATHER_API: ${{ secrets.WEATHER_API }}
-          DC_TOKEN: ${{ secrets.DC_TOKEN }}
-          SEARCH_API: ${{ secrets.SEARCH_API }}
-          AI_TOKEN: ${{ secrets.AI_TOKEN }}
-          AI_TOKEN1: ${{ secrets.AI_TOKEN1 }}
-          AI_TOKEN_POLZA: ${{ secrets.AI_TOKEN_POLZA }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-        run: |
-          echo "Running Python script test..."
-          
-          echo "Starting Python script..."
-          
-          # Запустить с таймаутом (если скрипт работает постоянно)
-          python main_test.py 2>&1
-
-          echo "Python script test completed successfully"
-
-      # Шаг 5: Сборка Docker-образа
+      # Шаг 2: Сборка Docker-образа локально
       - name: Build Docker image
         run: docker build . --file Dockerfile --tag discordchatbot:latest
 
-      # Шаг 6: Экспорт Docker-образа в tar-файл
-      - name: Save Docker image as tar file
-        run: docker save discordchatbot:latest -o image_dc.tar
+      # Шаг 3: Остановка старого контейнера
+      - name: Stop and remove old container
+        run: |
+          docker stop dcchatbot || true
+          docker rm dcchatbot || true
 
-      # Шаг 7: Изменение прав доступа к файлу (для успешного копирования)
-      - name: Set permissions on image_dc.tar
-        run: chmod 644 image_dc.tar
+      # Шаг 4: Запуск нового контейнера с передачей всех нужных переменных окружения
+      - name: Run new container
+        run: |
+          docker run -d --name dcchatbot \
+            --restart unless-stopped \
+            -v chroma_data:/python-app/chroma_db \
+            -e WEATHER_API="${{ secrets.WEATHER_API }}" \
+            -e DC_TOKEN="${{ secrets.DC_TOKEN }}" \
+            -e SEARCH_API="${{ secrets.SEARCH_API }}" \
+            -e AI_TOKEN="${{ secrets.AI_TOKEN }}" \
+            -e AI_TOKEN1="${{ secrets.AI_TOKEN1 }}" \
+            -e AI_TOKEN_POLZA="${{ secrets.AI_TOKEN_POLZA }}" \
+            -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+            -e TELEGRAM_BOT_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN }}" \
+            -e TELEGRAM_CHAT_ID="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -e YOUTUBE_API_KEY="${{ secrets.YOUTUBE_API_KEY }}" \
+            discordchatbot:latest
 
-      # Шаг 8: Передача tar-файла на сервер с помощью scp
-      - name: Copy Docker image to server via scp
-        uses: appleboy/scp-action@master
-        with:
-          host: ${{ secrets.DEPLOY_SERVER_HOST }}
-          username: ${{ secrets.DEPLOY_SERVER_USER }}
-          password: ${{ secrets.DEPLOY_SERVER_PASSWORD }}
-          port: 22
-          source: "image_dc.tar"
-          target: "~/deploy/"
-
-      # Шаг 9: Загрузка образа и запуск контейнера на удалённом сервере по SSH
-      - name: Load image and run container on remote server
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.DEPLOY_SERVER_HOST }}
-          username: ${{ secrets.DEPLOY_SERVER_USER }}
-          password: ${{ secrets.DEPLOY_SERVER_PASSWORD }}
-          port: 22
-          script: |
-            docker load -i ~/deploy/image_dc.tar
-            docker stop dcchatbot || true
-            docker rm dcchatbot || true
-            docker volume create chroma_data || true
-            docker run -d --name dcchatbot \
-              -v chroma_data:/python-app/chroma_db \
-              -e WEATHER_API="${{ secrets.WEATHER_API }}" \
-              -e DC_TOKEN="${{ secrets.DC_TOKEN }}" \
-              -e SEARCH_API="${{ secrets.SEARCH_API }}" \
-              -e AI_TOKEN="${{ secrets.AI_TOKEN }}" \
-              -e AI_TOKEN1="${{ secrets.AI_TOKEN1 }}" \
-              -e AI_TOKEN_POLZA="${{ secrets.AI_TOKEN_POLZA }}" \
-              -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-              -e TELEGRAM_BOT_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN }}" \
-              -e TELEGRAM_CHAT_ID="${{ secrets.TELEGRAM_CHAT_ID }}" \
-              -e YOUTUBE_API_KEY="${{ secrets.YOUTUBE_API_KEY }}" \
-              discordchatbot:latest
+      # Шаг 5: Очистка старых "повисших" образов, чтобы не забивать память
+      - name: Clean up unused Docker images
+        run: docker image prune -f
