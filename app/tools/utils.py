@@ -94,40 +94,14 @@ def clean_text(text: str) -> str:
 
 def replace_emojis(text: str) -> str:
     """Заменяет текстовые представления эмодзи на реальные Discord-эмодзи."""
-    
-    # 1. Заменяем все теги из списка EMOJIS (даже корявые, без двоеточий)
-    slugs_pattern = "|".join(re.escape(e.slug) for e in EMOJIS)
-    
-    # Группа 1 ловит уже готовые Discord-эмодзи (<:name:id>), 
-    # чтобы мы случайно не заменили кусок внутри них.
-    # Группа 2 ловит наши сырые теги (с опциональными двоеточиями).
-    pattern = re.compile(rf"(<:[a-zA-Z0-9_]+:\d+>)|(?::?\s*({slugs_pattern})\s*:?)")
+    for emoji in EMOJIS:
+        pattern = re.compile(rf"(?<!<):?\s*{re.escape(emoji.slug)}\s*:?(?!>)")
+        text = pattern.sub(emoji.full_code, text)
 
-    def replacer(match):
-        if match.group(1):
-            return match.group(1) # Готовый тег оставляем как есть
-        
-        slug = match.group(2)
-        emoji = next((e for e in EMOJIS if e.slug == slug), None)
-        if emoji:
-            return emoji.full_code
-        return match.group(0)
-
-    text = pattern.sub(replacer, text)
-
-    # 2. Отдельный фикс для 'F' (когда ИИ забывает подчеркивание: F_ -> F)
-    # Ищем `: F` или `:F:` (с хотя бы одним двоеточием, чтобы не трогать обычную букву F)
-    pattern_f = re.compile(r"(<:[a-zA-Z0-9_]+:\d+>)|(:\s*F\s*:?)")
-    def replacer_f(match):
-        if match.group(1):
-            return match.group(1)
-            
-        f_emoji = next((e for e in EMOJIS if e.slug == "F_"), None)
-        if f_emoji:
-            return f_emoji.full_code
-        return match.group(0)
-
-    text = pattern_f.sub(replacer_f, text)
+    f_emoji_code = next((e.full_code for e in EMOJIS if e.slug == "F_"), "")
+    if f_emoji_code:
+        pattern_f = re.compile(r"(?<!<):\s*F\s*:?(?!>)")
+        text = pattern_f.sub(f_emoji_code, text)
 
     return text
 

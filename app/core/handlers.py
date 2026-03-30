@@ -107,6 +107,7 @@ async def ai_generate(
             frequency_penalty=0.1,
             presence_penalty=0.2,
             max_tokens=4500,
+            timeout=60.0,
         )
 
         response_text = completion.choices[0].message.content
@@ -148,6 +149,7 @@ async def ai_generate_birthday_congrats(name: str) -> str:
             frequency_penalty=0.1,  # Поощряет новые формулировки
             presence_penalty=0.2,  # Поощряет новые темы
             max_tokens=400,
+            timeout=30.0,
         )
         text = completion.choices[0].message.content.strip()
         text = clean_text(text)
@@ -197,12 +199,17 @@ async def process_mcp_conversation(
     messages: list, tools: list, session: ClientSession
 ) -> tuple[str, bool]:
     """Обрабатывает разговор с возможными вызовами MCP-инструментов."""
-    response = await get_client().chat.completions.create(
-        model=get_mini_model(),
-        messages=messages,
-        tools=tools,
-        tool_choice="auto",
-    )
+    try:
+        response = await get_client().chat.completions.create(
+            model=get_mini_model(),
+            messages=messages,
+            tools=tools,
+            tool_choice="auto",
+            timeout=30.0,
+        )
+    except Exception as e:
+        print(f"Ошибка при вызове ИИ провайдера (MCP_conversation): {e}")
+        return "", False
     assistant_message = response.choices[0].message
     print(assistant_message)
 
