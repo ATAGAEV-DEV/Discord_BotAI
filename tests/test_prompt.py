@@ -1,7 +1,6 @@
 """Unit-тесты для app/tools/prompt.py."""
 
 from app.tools.prompt import (
-    EMOJI_MAPPING,
     SYSTEM_BIRTHDAY_PROMPT,
     SYSTEM_PROMPT,
     USER_DESCRIPTIONS,
@@ -30,10 +29,6 @@ class TestSystemHolidayPrompt:
 
 class TestConstants:
     """Тесты для констант в prompt.py."""
-
-    def test_emoji_mapping_not_empty(self) -> None:
-        """EMOJI_MAPPING не пустой."""
-        assert len(EMOJI_MAPPING) > 0
 
     def test_user_descriptions_not_empty(self) -> None:
         """USER_DESCRIPTIONS не пустой."""
