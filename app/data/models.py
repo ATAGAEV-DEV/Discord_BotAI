@@ -27,7 +27,7 @@ if not DATABASE_URL:
         "DATABASE_URL не задан в переменных окружения. "
         "Установите переменную для подключения к PostgreSQL."
     )
-SCHEMA = "public"
+SCHEMA = "discord"
 
 
 def get_engine(schema: str) -> AsyncEngine:
