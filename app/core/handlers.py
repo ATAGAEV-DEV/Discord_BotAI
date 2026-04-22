@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 from mcp import ClientSession, StdioServerParameters
@@ -17,6 +18,8 @@ from app.tools.utils import (
 )
 
 llama_manager = LlamaIndexManager()
+
+AI_GENERATE_TIMEOUT = 55.0
 
 
 async def clear_server_history(server_id: int) -> str | None:
@@ -58,77 +61,85 @@ async def ai_generate(
     tool_search: str | None,
     limit: int = 15,
 ) -> str:
-    """Генерирует ответ от AI на основе контекста сервера и текущего сообщения пользователя."""
-    messages = [{"role": "system", "content": user_prompt(f"{name}")}]
-    relevant_contexts = await llama_manager.query_relevant_context(server_id, text, limit=limit)
-    relevant_contexts = enrich_users_context(relevant_contexts, USER_DESCRIPTIONS)
+    """Генерирует ответ от AI с глобальным таймаутом."""
 
-    if relevant_contexts:
-        context_message = {
-            "role": "system",
-            "content": "Релевантный контекст из истории сервера:\n" + "\n".join(relevant_contexts),
-        }
-        messages.append(context_message)
+    async def _generate_inner() -> str:
+        """Внутренняя функция генерации (без таймаута)."""
+        messages = [{"role": "system", "content": user_prompt(f"{name}")}]
+        relevant_contexts = await llama_manager.query_relevant_context(server_id, text, limit=limit)
+        relevant_contexts = enrich_users_context(relevant_contexts, USER_DESCRIPTIONS)
 
-    if tool_weather is not None:
-        tool_message = {
-            "role": "system",
-            "content": f"Дополнительная информация от инструментов: {tool_weather}",
-        }
-        messages.append(tool_message)
+        if relevant_contexts:
+            context_message = {
+                "role": "system",
+                "content": "Релевантный контекст из истории сервера:\n" + "\n".join(relevant_contexts),
+            }
+            messages.append(context_message)
 
-    if tool_search is not None:
-        tool_message = {
-            "role": "system",
-            "content": f"Дополнительная информация от инструментов: {tool_search}",
-        }
-        messages.append(tool_message)
+        if tool_weather is not None:
+            tool_message = {
+                "role": "system",
+                "content": f"Дополнительная информация от инструментов: {tool_weather}",
+            }
+            messages.append(tool_message)
 
-    user_msg = {"role": "user", "content": f"[Пользователь: {name}] {text}"}
-    messages.append(user_msg)
+        if tool_search is not None:
+            tool_message = {
+                "role": "system",
+                "content": f"Дополнительная информация от инструментов: {tool_search}",
+            }
+            messages.append(tool_message)
+
+        user_msg = {"role": "user", "content": f"[Пользователь: {name}] {text}"}
+        messages.append(user_msg)
+
+        try:
+            openai_messages = []
+            for msg in messages:
+                if msg["role"] == "system":
+                    openai_messages.append(
+                        ChatCompletionSystemMessageParam(role="system", content=msg["content"])
+                    )
+                elif msg["role"] == "user":
+                    openai_messages.append(
+                        ChatCompletionUserMessageParam(role="user", content=msg["content"])
+                    )
+
+            completion = await get_client().chat.completions.create(
+                model=get_model(),
+                messages=openai_messages,
+                temperature=0.8,
+                top_p=0.8,
+                frequency_penalty=0.1,
+                presence_penalty=0.2,
+                max_tokens=4500,
+                timeout=60.0,
+            )
+
+            response_text = completion.choices[0].message.content
+            cleaned_response_text = clean_text(response_text)
+            emoji_response_text = replace_emojis(cleaned_response_text)
+
+            messages_to_index = [
+                {"role": "user", "content": f"[Пользователь: {name}] {text}"},
+                {"role": "assistant", "content": cleaned_response_text},
+            ]
+            # Индексация в фоновом режиме (не блокирует ответ)
+            asyncio.create_task(llama_manager.index_messages(server_id, messages_to_index))
+            print(f"Сообщения {messages}")
+            print(count_tokens(messages))
+            print(f"Ответ с эмодзи: {emoji_response_text}")
+            print(f"Ответ от ИИ: {response_text}")
+            return emoji_response_text
+        except Exception as e:
+            print(f"Ошибка при вызове OpenAI API: {e}")
+            return "Произошла ошибка. Пожалуйста, попробуйте позже."
 
     try:
-        openai_messages = []
-        for msg in messages:
-            if msg["role"] == "system":
-                openai_messages.append(
-                    ChatCompletionSystemMessageParam(role="system", content=msg["content"])
-                )
-            elif msg["role"] == "user":
-                openai_messages.append(
-                    ChatCompletionUserMessageParam(role="user", content=msg["content"])
-                )
-
-        completion = await get_client().chat.completions.create(
-            model=get_model(),
-            messages=openai_messages,
-            temperature=0.8,
-            top_p=0.8,
-            frequency_penalty=0.1,
-            presence_penalty=0.2,
-            max_tokens=4500,
-            timeout=60.0,
-        )
-
-        response_text = completion.choices[0].message.content
-        cleaned_response_text = clean_text(response_text)
-        emoji_response_text = replace_emojis(cleaned_response_text)
-
-        messages_to_index = [
-            {"role": "user", "content": f"[Пользователь: {name}] {text}"},
-            {"role": "assistant", "content": cleaned_response_text},
-        ]
-        await llama_manager.index_messages(server_id, messages_to_index)
-        # print(f"Релевантный {relevant_contexts}")
-        # print(count_tokens(relevant_contexts))
-        print(f"Сообщения {messages}")
-        print(count_tokens(messages))
-        print(f"Ответ с эмодзи: {emoji_response_text}")
-        print(f"Ответ от ИИ: {response_text}")
-        return emoji_response_text
-    except Exception as e:
-        print(f"Ошибка при вызове OpenAI API: {e}")
-        return "Произошла ошибка. Пожалуйста, попробуйте позже."
+        return await asyncio.wait_for(_generate_inner(), timeout=AI_GENERATE_TIMEOUT)
+    except TimeoutError:
+        print(f"Таймаут {AI_GENERATE_TIMEOUT} сек. при генерации ответа для пользователя {name}")
+        return f"⏳ Запрос не обработан за {AI_GENERATE_TIMEOUT} секунд. Попробуйте позже."
 
 
 async def ai_generate_birthday_congrats(name: str) -> str:
