@@ -9,6 +9,9 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 
 from app.core.ai_config import get_client, get_provider_config
 
+QUERY_TIMEOUT = 30.0
+INDEX_TIMEOUT = 25.0
+
 
 class LlamaIndexManager:
     """Управляет интеграцией с LlamaIndex и ChromaDB.
@@ -78,13 +81,19 @@ class LlamaIndexManager:
             vector_store = ChromaVectorStore(chroma_collection=collection)
             storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-            index = await asyncio.to_thread(
-                VectorStoreIndex.from_documents,
-                documents,
-                storage_context=storage_context,
-                show_progress=False,
+            index = await asyncio.wait_for(
+                asyncio.to_thread(
+                    VectorStoreIndex.from_documents,
+                    documents,
+                    storage_context=storage_context,
+                    show_progress=False,
+                ),
+                timeout=INDEX_TIMEOUT
             )
             return index
+        except TimeoutError:
+            print(f"Таймаут {INDEX_TIMEOUT} сек. при индексации сообщений сервера {server_id}")
+            return None
         except Exception as e:
             print(f"Ошибка индексации сообщений: {e}")
             return None
@@ -94,13 +103,22 @@ class LlamaIndexManager:
         try:
             collection = self.get_server_collection(server_id)
             vector_store = ChromaVectorStore(chroma_collection=collection)
-            index = await asyncio.to_thread(VectorStoreIndex.from_vector_store, vector_store)
+            index = await asyncio.wait_for(
+                asyncio.to_thread(VectorStoreIndex.from_vector_store, vector_store),
+                timeout=QUERY_TIMEOUT
+            )
 
             retriever = index.as_retriever(similarity_top_k=limit)
-            nodes = await asyncio.to_thread(retriever.retrieve, query)
+            nodes = await asyncio.wait_for(
+                asyncio.to_thread(retriever.retrieve, query),
+                timeout=QUERY_TIMEOUT
+            )
 
             relevant_contexts = [node.text for node in nodes]
             return relevant_contexts
+        except TimeoutError:
+            print(f"Таймаут {QUERY_TIMEOUT} сек. при поиске контекста для сервера {server_id}")
+            return []
         except Exception as e:
             print(f"Ошибка поиска контекста: {e}")
             return []
@@ -109,7 +127,10 @@ class LlamaIndexManager:
         """Индексировать список пользователей сервера с использованием метаданных."""
         try:
             collection = self.get_server_collection(server_id)
-            await asyncio.to_thread(collection.delete, where={"document_type": "server_users"})
+            await asyncio.wait_for(
+                asyncio.to_thread(collection.delete, where={"document_type": "server_users"}),
+                timeout=5.0
+            )
             users_text = f"Список пользователей сервера: {', '.join(users)}"
             document = Document(
                 text=users_text, metadata={"document_type": "server_users", "server_id": server_id}
@@ -118,15 +139,21 @@ class LlamaIndexManager:
             vector_store = ChromaVectorStore(chroma_collection=collection)
             storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-            index = await asyncio.to_thread(
-                VectorStoreIndex.from_documents,
-                [document],
-                storage_context=storage_context,
-                show_progress=False,
+            index = await asyncio.wait_for(
+                asyncio.to_thread(
+                    VectorStoreIndex.from_documents,
+                    [document],
+                    storage_context=storage_context,
+                    show_progress=False,
+                ),
+                timeout=INDEX_TIMEOUT
             )
 
             print(f"Обновлен список пользователей сервера {server_id}: {len(users)} пользователей")
             return index
+        except TimeoutError:
+            print(f"Таймаут при индексации пользователей сервера {server_id}")
+            return None
         except Exception as e:
             print(f"Ошибка индексации пользователей сервера: {e}")
             return None
