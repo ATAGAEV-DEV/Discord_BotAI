@@ -19,7 +19,7 @@ from app.tools.utils import (
 
 llama_manager = LlamaIndexManager()
 
-AI_GENERATE_TIMEOUT = 55.0
+AI_GENERATE_TIMEOUT = 100.0
 
 
 async def clear_server_history(server_id: int) -> str | None:
