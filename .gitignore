@@ -1,7 +1,7 @@
 /.env
 /.continue
 /.python-version
-/chroma_db
+chroma_db/
 /.idea
 __pycache__/
 /.venv
@@ -9,4 +9,7 @@ __pycache__/
 .coverage
 .DS_Store
 .agent
-.clineignore
+app/resource/audio.wav
+app/services/audio_to_text.py
+app/services/weather_agent_old.py
+app/services/youtube_downloader.py
