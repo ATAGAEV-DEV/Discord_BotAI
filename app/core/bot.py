@@ -90,7 +90,7 @@ class DisBot(commands.Bot):
             if contains_only_urls(message.content):
                 return
 
-            if self.report_generator is not None:
+            if self.report_generator is not None and not message.content.startswith("?"):
                 await self.report_generator.add_message(
                     message.channel.id,
                     message.content,
