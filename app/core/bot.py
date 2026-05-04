@@ -43,12 +43,12 @@ class DisBot(commands.Bot):
         await self.load_extension("app.cogs.toxic")
         await self.load_extension("app.cogs.error_handler")
         await self.load_extension("app.cogs.ranks")
+        start_scheduler(self, self.youtube_notifier)
 
     async def on_ready(self) -> None:
         """Инициализация при подключении бота к Discord."""
         await init_models()
         self.report_generator = ReportGenerator(self)
-        start_scheduler(self, self.youtube_notifier)
 
         telegram_notifier.enabled = telegram_notifier.enabled and self.telegram_enabled
         if not self.telegram_enabled:
