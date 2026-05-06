@@ -9,9 +9,6 @@ from app.core.ai_config import (
 )
 from app.core.bot import DisBot
 from app.core.checks import admin_or_owner
-from app.core.scheduler import send_birthday_congratulations, send_holiday_congratulations
-from app.data.request import save_holiday
-from app.tools.utils import parse_holiday_command
 
 
 class Admin(commands.Cog):
@@ -20,39 +17,6 @@ class Admin(commands.Cog):
     def __init__(self, bot: DisBot) -> None:
         """Инициализация Cog."""
         self.bot = bot
-
-    @commands.command(name="check_birthday")
-    @commands.guild_only()
-    @admin_or_owner()
-    async def manual_birthday_command(self, ctx: commands.Context) -> None:
-        """Ручная отправка поздравлений с днем рождения."""
-        await send_birthday_congratulations(self.bot)
-
-    @commands.command(name="check_holiday")
-    @commands.guild_only()
-    @admin_or_owner()
-    async def manual_holiday_command(self, ctx: commands.Context) -> None:
-        """Ручная отправка поздравлений с праздниками."""
-        await send_holiday_congratulations(self.bot)
-
-    @commands.command(name="holiday")
-    @commands.guild_only()
-    @admin_or_owner()
-    async def holiday_command(self, ctx: commands.Context, *, content: str) -> None:
-        """Добавить праздник.
-
-        Использование: !holiday 01.01 Новый Год
-        """
-        try:
-            day, month, holiday_name = parse_holiday_command(
-                f"{ctx.prefix}{ctx.command.name} {content}"
-            )
-            response = await save_holiday(day, month, holiday_name)
-            await ctx.send(f"✅ {response}")
-        except ValueError as ve:
-            await ctx.send(f"❌ Ошибка формата: {ve}")
-        except Exception as e:
-            await ctx.send(f"❌ Ошибка при сохранении праздника: {e}")
 
     @commands.command(name="reset")
     @commands.guild_only()
