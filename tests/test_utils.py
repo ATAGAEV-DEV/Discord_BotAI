@@ -11,7 +11,6 @@ from app.tools.utils import (
     enrich_users_context,
     get_rank_description,
     user_prompt,
-    users_context,
 )
 
 # ── contains_only_urls ──────────────────────────────────────────
@@ -235,23 +234,6 @@ class TestEnrichUsersContext:
         """Пустой список — пустой результат."""
         assert enrich_users_context([], {}) == []
 
-
-# ── users_context ───────────────────────────────────────────────
-
-
-class TestUsersContext:
-    """Тесты для функции users_context."""
-
-    def test_with_descriptions(self) -> None:
-        """Формирует контекст с описаниями."""
-        result = users_context(["atagaev"], {"atagaev": "Арби"})
-        assert "atagaev: Арби" in result
-        assert "Список пользователей сервера:" in result
-
-    def test_without_descriptions(self) -> None:
-        """Неизвестные пользователи не включаются."""
-        result = users_context(["unknown"], {"atagaev": "Арби"})
-        assert "unknown" not in result
 
 
 # ── clean_text ──────────────────────────────────────────────────
