@@ -1,14 +1,11 @@
 """Unit-тесты для app/tools/utils.py."""
 
-from types import SimpleNamespace
-
 import pytest
 
 from app.tools.prompt import RANK_NAMES
 from app.tools.utils import (
     clean_text,
     contains_only_urls,
-    convert_mcp_tools_to_openai,
     count_tokens,
     darken_color,
     enrich_users_context,
@@ -255,40 +252,6 @@ class TestUsersContext:
         """Неизвестные пользователи не включаются."""
         result = users_context(["unknown"], {"atagaev": "Арби"})
         assert "unknown" not in result
-
-
-# ── convert_mcp_tools_to_openai ─────────────────────────────────
-
-
-class TestConvertMcpToolsToOpenai:
-    """Тесты для функции convert_mcp_tools_to_openai."""
-
-    def test_converts_tool(self) -> None:
-        """Корректно конвертирует MCP-инструмент в формат OpenAI."""
-        mock_tool = SimpleNamespace(
-            name="test_tool",
-            description="Тестовый инструмент",
-            inputSchema={"type": "object", "properties": {}},
-        )
-        result = convert_mcp_tools_to_openai([mock_tool])
-        assert len(result) == 1
-        assert result[0]["type"] == "function"
-        assert result[0]["function"]["name"] == "test_tool"
-        assert result[0]["function"]["description"] == "Тестовый инструмент"
-
-    def test_no_description_fallback(self) -> None:
-        """Без описания — fallback-текст."""
-        mock_tool = SimpleNamespace(
-            name="tool",
-            description=None,
-            inputSchema={},
-        )
-        result = convert_mcp_tools_to_openai([mock_tool])
-        assert result[0]["function"]["description"] == "Инструмент без описания"
-
-    def test_empty_list(self) -> None:
-        """Пустой список → пустой результат."""
-        assert convert_mcp_tools_to_openai([]) == []
 
 
 # ── clean_text ──────────────────────────────────────────────────
