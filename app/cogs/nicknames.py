@@ -1,5 +1,3 @@
-"""Команды управления описаниями пользователей."""
-
 from discord.ext import commands
 
 from app.core.bot import DisBot
