@@ -6,8 +6,9 @@ from mcp.client.stdio import stdio_client
 from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
 
 from app.core.ai_config import get_client, get_mini_model, get_model
+from app.data import user_descriptions_cache
 from app.services.llama_integration import LlamaIndexManager
-from app.tools.prompt import SEARCH_PROMPT, SYSTEM_BIRTHDAY_PROMPT, USER_DESCRIPTIONS, WEATHER_PROMPT
+from app.tools.prompt import SEARCH_PROMPT, WEATHER_PROMPT, system_birthday_prompt
 from app.tools.utils import (
     clean_text,
     convert_mcp_tools_to_openai,
@@ -67,12 +68,18 @@ async def ai_generate(
         """Внутренняя функция генерации (без таймаута)."""
         messages = [{"role": "system", "content": user_prompt(f"{name}")}]
         relevant_contexts = await llama_manager.query_relevant_context(server_id, text, limit=limit)
-        relevant_contexts = enrich_users_context(relevant_contexts, USER_DESCRIPTIONS)
+        descriptions = user_descriptions_cache.get_all()
+        relevant_contexts = enrich_users_context(
+            relevant_contexts, descriptions
+        )
 
         if relevant_contexts:
             context_message = {
                 "role": "system",
-                "content": "Релевантный контекст из истории сервера:\n" + "\n".join(relevant_contexts),
+                "content": (
+                    "Релевантный контекст из истории сервера:\n"
+                    + "\n".join(relevant_contexts)
+                ),
             }
             messages.append(context_message)
 
@@ -145,7 +152,10 @@ async def ai_generate(
 async def ai_generate_birthday_congrats(name: str) -> str:
     """Генерирует креативное поздравление с днём рождения для пользователя."""
     prompt = [
-        ChatCompletionSystemMessageParam(role="system", content=SYSTEM_BIRTHDAY_PROMPT.strip()),
+        ChatCompletionSystemMessageParam(
+            role="system",
+            content=system_birthday_prompt(user_descriptions_cache.get_all()).strip(),
+        ),
         ChatCompletionUserMessageParam(
             role="user", content=f"Сгенерируй креативное поздравление с днем рождения для {name}."
         ),
