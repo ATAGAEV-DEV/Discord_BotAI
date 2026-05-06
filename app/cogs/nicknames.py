@@ -21,15 +21,12 @@ class Nicknames(commands.Cog):
         Использование: !desc_add ник Описание пользователя
         Пример: !desc_add atagaev Арби, создатель бота
         """
-        try:
-            result = await user_descriptions_cache.save(
-                nick=nick,
-                description=description,
-                guild_id=ctx.guild.id,
-            )
-            await ctx.send(f"✅ {result}")
-        except Exception as e:
-            await ctx.send(f"❌ Ошибка: {e}")
+        result = await user_descriptions_cache.save(
+            nick=nick,
+            description=description,
+            guild_id=ctx.guild.id,
+        )
+        await ctx.send(f"✅ {result}")
 
     @commands.command(name="desc_remove")
     @commands.guild_only()
@@ -40,14 +37,11 @@ class Nicknames(commands.Cog):
         Использование: !desc_remove ник
         Пример: !desc_remove atagaev
         """
-        try:
-            result = await user_descriptions_cache.remove(
-                nick=nick,
-                guild_id=ctx.guild.id,
-            )
-            await ctx.send(f"✅ {result}")
-        except Exception as e:
-            await ctx.send(f"❌ Ошибка: {e}")
+        result = await user_descriptions_cache.remove(
+            nick=nick,
+            guild_id=ctx.guild.id,
+        )
+        await ctx.send(f"✅ {result}")
 
     @commands.command(name="desc_list")
     @commands.guild_only()
@@ -74,14 +68,11 @@ class Nicknames(commands.Cog):
 
         Использование: !desc_reload
         """
-        try:
-            await user_descriptions_cache.load_all()
-            count = len(user_descriptions_cache.get(ctx.guild.id))
-            await ctx.send(
-                f"🔄 Кэш описаний перезагружен! Загружено {count} описаний для этого сервера."
-            )
-        except Exception as e:
-            await ctx.send(f"❌ Ошибка перезагрузки: {e}")
+        await user_descriptions_cache.load_all()
+        count = len(user_descriptions_cache.get(ctx.guild.id))
+        await ctx.send(
+            f"🔄 Кэш описаний перезагружен! Загружено {count} описаний для этого сервера."
+        )
 
 
 async def setup(bot: DisBot) -> None:
