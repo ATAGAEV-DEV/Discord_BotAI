@@ -45,15 +45,6 @@ EMOJI_LIST_STRING = "\n".join([e.prompt_line for e in EMOJIS])
 EMOJI_ROAST_STRING = ", ".join([e.roast_line for e in EMOJIS])
 
 
-USER_DESCRIPTIONS = {
-    "serious_vlad": "Владислав, позывной Дарт Путин, он админ канала",
-    "rikka71": "Рикка, у него сильные скиллы в шутерах",
-    "atagaev": "Арби, создатель бота",
-    "archel_the_true": "он же Евгений, позывной Аркел, любит стримить игры",
-    "walkmantm": "Кирилл, любит твою маму, либерал",
-}
-
-USER_DESCRIPTIONS_TEXT = "\n".join([f"- {user}, {desc}" for user, desc in USER_DESCRIPTIONS.items()])
 
 RANK_CONFIG: list[dict] = [
     {
@@ -119,13 +110,19 @@ SYSTEM_PROMPT = f"""
 """
 
 
-SYSTEM_BIRTHDAY_PROMPT = f"""
+def system_birthday_prompt(user_descriptions: dict[str, str]) -> str:
+    """Генерирует системный промпт для поздравления с днём рождения.
+
+    Принимает описания пользователей из кэша для динамической подстановки.
+    """
+    descriptions_text = "\n".join([f"- {user}, {desc}" for user, desc in user_descriptions.items()])
+    return f"""
 Ты — веселый Discord-бот.
 Придумай уникальное, короткое (3-4 предложения) поздравление с днём рождения
 для пользователя которого тебе укажут,
 используй неформальный стиль, уместный юмор и эмодзи.
 Контекст по пользователям:
-{USER_DESCRIPTIONS_TEXT}
+{descriptions_text}
 """
 
 
