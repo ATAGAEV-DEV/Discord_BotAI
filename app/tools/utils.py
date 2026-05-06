@@ -52,19 +52,6 @@ def enrich_users_context(contexts: list[str], user_descriptions: dict) -> list[s
     return new_contexts
 
 
-def users_context(contexts: list[str], user_descriptions: dict) -> str:
-    """Обогащает контекст информацией о пользователях из USER_DESCRIPTIONS."""
-    users_list = [user.strip() for user in contexts]
-
-    enriched_users = []
-    for user in users_list:
-        if user in user_descriptions:
-            enriched_users.append(f"{user}: {user_descriptions[user]}")
-
-    new_context = "Список пользователей сервера: " + "; ".join(enriched_users)
-    return new_context
-
-
 def contains_only_urls(text: str) -> bool:
     """Проверяет, содержит ли текст только ссылки (и пробелы между ними)."""
     url_pattern = re.compile(r"https?://\S+|www\.\S+")
