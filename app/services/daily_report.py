@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
+import pytz
 from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
 
 from app.core.ai_config import get_client, get_mini_model
@@ -16,7 +17,7 @@ class ChannelState:
 
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     messages: list[dict[str, Any]] = field(default_factory=list)
-    last_message_time: datetime = field(default_factory=datetime.now)
+    last_message_time: datetime = field(default_factory=lambda: datetime.now(tz=pytz.utc))
     timer: asyncio.Task | None = None
 
 
@@ -57,18 +58,15 @@ class ReportGenerator:
                     "id": message_id,
                     "content": message,
                     "author": author,
-                    "timestamp": datetime.now(),
+                    "timestamp": datetime.now(tz=pytz.utc),
                 }
             )
 
-            state.last_message_time = datetime.now()
+            state.last_message_time = datetime.now(tz=pytz.utc)
 
             # Если таймер уже запущен — отменяем, так как активность продолжилась
             if state.timer and not state.timer.done():
-                try:
-                    state.timer.cancel()
-                except Exception as e:
-                    print(f"Ошибка при отмене таймера для канала {channel_id}: {e}")
+                state.timer.cancel()
 
             try:
                 db_messages = await get_channel_messages(channel_id)
@@ -95,7 +93,7 @@ class ReportGenerator:
 
         state = self.channels[channel_id]
         async with state.lock:
-            if (datetime.now() - state.last_message_time) < timedelta(
+            if (datetime.now(tz=pytz.utc) - state.last_message_time) < timedelta(
                 minutes=self.bot.report_time_limit
             ):
                 return
@@ -150,7 +148,7 @@ class ReportGenerator:
                 report = response.choices[0].message.content or "Пустой ответ от AI"
             except Exception as e:
                 print(f"Ошибка генерации отчета: {e}")
-                report = "Ошибка генерации отчета"
+                return
 
             if "ID:" in report:
                 guild_id = channel.guild.id if channel and hasattr(channel, "guild") else "UNKNOWN"
@@ -166,6 +164,7 @@ class ReportGenerator:
                     await channel.send(report)
             except Exception as e:
                 print(f"Ошибка отправки отчета в канал {channel_id}: {e}")
+                return
 
             try:
                 await delete_channel_messages(channel_id)
