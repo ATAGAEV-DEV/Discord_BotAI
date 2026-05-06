@@ -3,13 +3,14 @@ from datetime import datetime, timedelta
 from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
 
 from app.core.ai_config import get_client, get_model
-from app.tools.prompt import USER_DESCRIPTIONS, system_holiday_prompt
+from app.data import user_descriptions_cache
+from app.tools.prompt import system_holiday_prompt
 from app.tools.utils import clean_text, replace_emojis, users_context
 
 
 async def ai_generate_holiday_congrats(names: list[str], holiday: str) -> str:
     """Генерирует креативное поздравление с праздником для пользователей."""
-    relevant_contexts = users_context(names, USER_DESCRIPTIONS)
+    relevant_contexts = users_context(names, user_descriptions_cache.get_all())
     current_date = datetime.now()
     date_minus_month = current_date - timedelta(days=30)
     date_plus_month = current_date + timedelta(days=30)
