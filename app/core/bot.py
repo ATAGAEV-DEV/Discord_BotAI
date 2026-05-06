@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 
 from app.core.scheduler import start_scheduler
+from app.data import user_descriptions_cache
 from app.data.models import init_models
 from app.services.daily_report import ReportGenerator
 from app.services.telegram_notifier import telegram_notifier
@@ -41,6 +42,7 @@ class DisBot(commands.Bot):
         await self.load_extension("app.cogs.admin")
         await self.load_extension("app.cogs.youtube")
         await self.load_extension("app.cogs.toxic")
+        await self.load_extension("app.cogs.nicknames")
         await self.load_extension("app.cogs.error_handler")
         await self.load_extension("app.cogs.ranks")
         start_scheduler(self, self.youtube_notifier)
@@ -48,6 +50,7 @@ class DisBot(commands.Bot):
     async def on_ready(self) -> None:
         """Инициализация при подключении бота к Discord."""
         await init_models()
+        await user_descriptions_cache.load_all()
         self.report_generator = ReportGenerator(self)
 
         telegram_notifier.enabled = telegram_notifier.enabled and self.telegram_enabled
