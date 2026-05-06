@@ -1,5 +1,3 @@
-"""Общие команды бота: help, rank, birthday."""
-
 from discord.ext import commands
 
 import app.core.embeds as em
