@@ -15,9 +15,7 @@ class Nicknames(commands.Cog):
     @commands.command(name="desc_add")
     @commands.guild_only()
     @admin_or_owner()
-    async def desc_add_command(
-        self, ctx: commands.Context, nick: str, *, description: str
-    ) -> None:
+    async def desc_add_command(self, ctx: commands.Context, nick: str, *, description: str) -> None:
         """Добавить или обновить описание пользователя.
 
         Использование: !desc_add ник Описание пользователя
@@ -80,8 +78,7 @@ class Nicknames(commands.Cog):
             await user_descriptions_cache.load_all()
             count = len(user_descriptions_cache.get(ctx.guild.id))
             await ctx.send(
-                f"🔄 Кэш описаний перезагружен! "
-                f"Загружено {count} описаний для этого сервера."
+                f"🔄 Кэш описаний перезагружен! Загружено {count} описаний для этого сервера."
             )
         except Exception as e:
             await ctx.send(f"❌ Ошибка перезагрузки: {e}")
