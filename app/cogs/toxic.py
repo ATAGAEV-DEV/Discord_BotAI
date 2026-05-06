@@ -28,91 +28,87 @@ class Toxic(commands.Cog):
         !toxic 50 babka
         !toxic list
         """
-        try:
-            persona = None
-            limit = 20
+        persona = None
+        limit = 20
 
-            for arg in args:
-                if arg.isdigit():
-                    limit = max(1, min(int(arg), 80))
+        for arg in args:
+            if arg.isdigit():
+                limit = max(1, min(int(arg), 80))
+            else:
+                persona = arg
+
+        if persona == "list":
+            keys = ", ".join(f"`{k}`" for k in ROAST_PERSONAS.keys())
+            await ctx.send(f"🎭 **Доступные режимы:** {keys}")
+            return
+
+        messages = []
+        history_limit = limit * 2
+
+        async for msg in ctx.channel.history(limit=history_limit):
+            if len(messages) >= limit:
+                break
+
+            if msg.author == self.bot.user:
+                continue
+
+            content = msg.content
+            if content and (
+                content.startswith(str(ctx.prefix))
+                or content.startswith(self.bot.command_prefix)
+            ):
+                continue
+
+            if not content:
+                if msg.attachments:
+                    content = "[Пользователь скинул картинку/файл]"
+                elif msg.stickers:
+                    content = "[Пользователь отправил стикер]"
                 else:
-                    persona = arg
-
-            if persona == "list":
-                keys = ", ".join(f"`{k}`" for k in ROAST_PERSONAS.keys())
-                await ctx.send(f"🎭 **Доступные режимы:** {keys}")
-                return
-
-            messages = []
-            history_limit = limit * 2
-
-            async for msg in ctx.channel.history(limit=history_limit):
-                if len(messages) >= limit:
-                    break
-
-                if msg.author == self.bot.user:
                     continue
 
-                content = msg.content
-                if content and (
-                    content.startswith(str(ctx.prefix))
-                    or content.startswith(self.bot.command_prefix)
-                ):
-                    continue
+            if content.startswith("http"):
+                content = "[Пользователь отправил ссылку]"
 
-                if not content:
-                    if msg.attachments:
-                        content = "[Пользователь скинул картинку/файл]"
-                    elif msg.stickers:
-                        content = "[Пользователь отправил стикер]"
-                    else:
-                        continue
+            messages.append(f"[{msg.author.name}]: {content}")
 
-                if content.startswith("http"):
-                    content = "[Пользователь отправил ссылку]"
+        if not messages:
+            await ctx.send("Тут слишком тихо, некого прожаривать. 🦗")
+            return
 
-                messages.append(f"[{msg.author.name}]: {content}")
+        messages.reverse()
+        history_text = "\n".join(messages)
 
-            if not messages:
-                await ctx.send("Тут слишком тихо, некого прожаривать. 🦗")
-                return
+        descriptions = user_descriptions_cache.get_all()
+        user_info_text = "\n".join([f"- {k}: {v}" for k, v in descriptions.items()])
 
-            messages.reverse()
-            history_text = "\n".join(messages)
+        system_content = ROAST_PROMPT.format(user_info=user_info_text)
 
-            descriptions = user_descriptions_cache.get_all()
-            user_info_text = "\n".join([f"- {k}: {v}" for k, v in descriptions.items()])
+        if persona and persona in ROAST_PERSONAS:
+            selected_persona = ROAST_PERSONAS[persona]
+            system_content += f"\n\nВАЖНОЕ ДОПОЛНЕНИЕ К РОЛИ:\n{selected_persona}"
+        elif persona:
+            keys = ", ".join(f"`{k}`" for k in ROAST_PERSONAS.keys())
+            await ctx.send(f"❌ Нет такого режима `{persona}`. Доступные: {keys}")
+            return
 
-            system_content = ROAST_PROMPT.format(user_info=user_info_text)
+        msgs = [
+            ChatCompletionSystemMessageParam(role="system", content=system_content),
+            ChatCompletionUserMessageParam(
+                role="user", content=f"Вот последние сообщения чата:\n{history_text}"
+            ),
+        ]
 
-            if persona and persona in ROAST_PERSONAS:
-                selected_persona = ROAST_PERSONAS[persona]
-                system_content += f"\n\nВАЖНОЕ ДОПОЛНЕНИЕ К РОЛИ:\n{selected_persona}"
-            elif persona:
-                keys = ", ".join(f"`{k}`" for k in ROAST_PERSONAS.keys())
-                await ctx.send(f"❌ Нет такого режима `{persona}`. Доступные: {keys}")
-                return
-
-            msgs = [
-                ChatCompletionSystemMessageParam(role="system", content=system_content),
-                ChatCompletionUserMessageParam(
-                    role="user", content=f"Вот последние сообщения чата:\n{history_text}"
-                ),
-            ]
-
-            async with ctx.typing():
-                completion = await get_client().chat.completions.create(
-                    model=get_model(),
-                    messages=msgs,
-                    temperature=0.9,
-                    max_tokens=600,
-                )
-                response = completion.choices[0].message.content or ""
-                cleaned_response_text = clean_text(response)
-                await ctx.send(cleaned_response_text)
-
-        except Exception as e:
-            await ctx.send(f"❌ Не удалось прожарить: {e}")
+        async with ctx.typing():
+            completion = await get_client().chat.completions.create(
+                model=get_model(),
+                messages=msgs,
+                temperature=0.9,
+                max_tokens=600,
+            )
+            response = completion.choices[0].message.content or ""
+            cleaned_response_text = clean_text(response)
+            await ctx.send(cleaned_response_text)
 
 
 async def setup(bot: DisBot) -> None:
