@@ -7,7 +7,14 @@ from typing import Any
 from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.data.models import Birthday, ChannelMessage, Holiday, UserMessageStats, async_session
+from app.data.models import (
+    Birthday,
+    ChannelMessage,
+    Holiday,
+    UserDescription,
+    UserMessageStats,
+    async_session,
+)
 from app.tools.utils import get_rank_description
 
 DB_TIMEOUT = 10
@@ -202,3 +209,53 @@ async def save_holiday(session: AsyncSession, day: int, month: int, holiday_name
     await session.commit()
     date_str = f"{day:02d}.{month:02d}"
     return f"Праздник '{holiday_name}' на {date_str} успешно {action}!"
+
+
+@db_operation("получении описаний пользователей")
+async def get_user_descriptions(session: AsyncSession, guild_id: int) -> dict[str, str]:
+    """Получает описания пользователей для указанного сервера.
+
+    Возвращает словарь {nick: description}, аналогичный старому USER_DESCRIPTIONS.
+    """
+    query = select(UserDescription).where(UserDescription.guild_id == guild_id)
+    result = await session.execute(query)
+    rows = result.scalars().all()
+    return {row.nick: row.description for row in rows}
+
+
+@db_operation("сохранении описания пользователя")
+async def save_user_description(
+    session: AsyncSession, nick: str, description: str, guild_id: int
+) -> str:
+    """Сохраняет или обновляет описание пользователя для сервера."""
+    query = select(UserDescription).where(
+        UserDescription.nick == nick, UserDescription.guild_id == guild_id
+    )
+    result = await session.execute(query)
+    existing = result.scalar_one_or_none()
+
+    if existing:
+        existing.description = description
+        action = "обновлено"
+    else:
+        new_entry = UserDescription(nick=nick, description=description, guild_id=guild_id)
+        session.add(new_entry)
+        action = "добавлено"
+
+    await session.commit()
+    return f"Описание для '{nick}' успешно {action}!"
+
+
+@db_operation("удалении описания пользователя")
+async def delete_user_description(session: AsyncSession, nick: str, guild_id: int) -> str:
+    """Удаляет описание пользователя для указанного сервера."""
+    query = delete(UserDescription).where(
+        UserDescription.nick == nick, UserDescription.guild_id == guild_id
+    )
+    result = await session.execute(query)
+    await session.commit()
+
+    if result.rowcount > 0:
+        return f"Описание для '{nick}' удалено."
+    return f"Описание для '{nick}' не найдено."
+
