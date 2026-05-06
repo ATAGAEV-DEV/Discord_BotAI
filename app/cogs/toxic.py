@@ -5,7 +5,8 @@ from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUs
 
 from app.core.ai_config import get_client, get_model
 from app.core.bot import DisBot
-from app.tools.prompt import ROAST_PERSONAS, ROAST_PROMPT, USER_DESCRIPTIONS
+from app.data import user_descriptions_cache
+from app.tools.prompt import ROAST_PERSONAS, ROAST_PROMPT
 from app.tools.utils import clean_text, replace_emojis
 
 
@@ -81,7 +82,10 @@ class Toxic(commands.Cog):
             messages.reverse()
             history_text = "\n".join(messages)
 
-            user_info_text = "\n".join([f"- {k}: {v}" for k, v in USER_DESCRIPTIONS.items()])
+            descriptions = user_descriptions_cache.get_all()
+            user_info_text = "\n".join(
+                [f"- {k}: {v}" for k, v in descriptions.items()]
+            )
 
             system_content = ROAST_PROMPT.format(user_info=user_info_text)
 
