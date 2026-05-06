@@ -19,21 +19,18 @@ class YouTube(commands.Cog):
         self, ctx: commands.Context, youtube_id: str, discord_channel_id: int, *, name: str
     ) -> None:
         """Добавить YouTube канал для отслеживания."""
-        try:
-            channel = self.bot.get_channel(discord_channel_id)
-            if channel is None:
-                await ctx.send("❌ Канал не найден!")
-                return
+        channel = self.bot.get_channel(discord_channel_id)
+        if channel is None:
+            await ctx.send("❌ Канал не найден!")
+            return
 
-            success = await self.youtube_notifier.add_channel(
-                youtube_id, discord_channel_id, name, ctx.guild.id
-            )
-            if success:
-                await ctx.send("✅ Канал добавлен для отслеживания")
-            else:
-                await ctx.send("❌ Ошибка при добавлении канала")
-        except Exception as e:
-            await ctx.send(f"❌ Ошибка: {e}")
+        success = await self.youtube_notifier.add_channel(
+            youtube_id, discord_channel_id, name, ctx.guild.id
+        )
+        if success:
+            await ctx.send("✅ Канал добавлен для отслеживания")
+        else:
+            await ctx.send("❌ Ошибка при добавлении канала")
 
     @commands.command(name="youtube")
     @commands.guild_only()
