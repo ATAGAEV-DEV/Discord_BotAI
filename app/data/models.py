@@ -5,11 +5,9 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
-    Date,
     DateTime,
     Index,
     Integer,
-    PrimaryKeyConstraint,
     String,
     Text,
     UniqueConstraint,
@@ -82,17 +80,6 @@ class ChannelMessage(Base):
     timestamp = Column(DateTime, default=func.now())
 
 
-class Birthday(Base):
-    """Модель дня рождения пользователя."""
-
-    __tablename__ = "birthday"
-    user_id = Column(BigInteger, primary_key=True, nullable=False)
-    display_name = Column(String(50), nullable=False)
-    name = Column(String(50), nullable=False)
-    birthday = Column(Date, nullable=False)
-    datetime_insert = Column(DateTime, default=func.now())
-
-
 class UserMessageStats(Base):
     """Модель статистики сообщений пользователя."""
 
@@ -138,18 +125,6 @@ class YouTubeVideo(Base):
     is_live = Column(Boolean, default=False, nullable=False)
 
     __table_args__ = (UniqueConstraint("video_id", "guild_id", name="uq_youtube_video_per_guild"),)
-
-
-class Holiday(Base):
-    """Модель праздника."""
-
-    __tablename__ = "holidays"
-
-    day = Column(Integer, nullable=False)
-    month = Column(Integer, nullable=False)
-    name = Column(String(255), nullable=False)
-
-    __table_args__ = (PrimaryKeyConstraint("day", "month", name="pk_holidays"),)
 
 
 class UserDescription(Base):
