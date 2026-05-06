@@ -2,6 +2,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from app.tools.prompt import RANK_NAMES
 from app.tools.utils import (
     clean_text,
@@ -177,19 +179,32 @@ class TestGetRankDescription:
 class TestUserPrompt:
     """Тесты для функции user_prompt."""
 
-    def test_known_user(self) -> None:
+    def test_known_user(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Известный пользователь — промпт содержит описание."""
+        from app.data import user_descriptions_cache
+
+        monkeypatch.setattr(
+            user_descriptions_cache, "_cache", {0: {"atagaev": "Арби, создатель бота"}}
+        )
         result = user_prompt("atagaev")
         assert "atagaev" in result
         assert "Арби" in result
 
-    def test_unknown_user(self) -> None:
+    def test_unknown_user(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Неизвестный пользователь — промпт без user_info."""
+        from app.data import user_descriptions_cache
+
+        monkeypatch.setattr(user_descriptions_cache, "_cache", {})
         result = user_prompt("random_user_12345")
         assert "random_user_12345" not in result
 
-    def test_returns_string(self) -> None:
+    def test_returns_string(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Всегда возвращает строку."""
+        from app.data import user_descriptions_cache
+
+        monkeypatch.setattr(
+            user_descriptions_cache, "_cache", {0: {"atagaev": "Арби, создатель бота"}}
+        )
         assert isinstance(user_prompt("atagaev"), str)
         assert isinstance(user_prompt("unknown"), str)
 
