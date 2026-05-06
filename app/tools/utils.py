@@ -1,11 +1,10 @@
 import re
-from datetime import datetime
 
 import discord
 import tiktoken
 
 from app.data import user_descriptions_cache
-from app.tools.prompt import EMOJIS, RANK_CONFIG, SYSTEM_PROMPT
+from app.tools.prompt import RANK_CONFIG, SYSTEM_PROMPT
 
 ENCODING = tiktoken.encoding_for_model("gpt-4o-mini")
 
@@ -94,20 +93,6 @@ def clean_text(text: str) -> str:
     return cleaned_text
 
 
-def replace_emojis(text: str) -> str:
-    """Заменяет текстовые представления эмодзи на реальные Discord-эмодзи."""
-    for emoji in EMOJIS:
-        pattern = re.compile(rf"(?<!<):?\s*{re.escape(emoji.slug)}\s*:?(?!>)")
-        text = pattern.sub(emoji.full_code, text)
-
-    f_emoji_code = next((e.full_code for e in EMOJIS if e.slug == "F_"), "")
-    if f_emoji_code:
-        pattern_f = re.compile(r"(?<!<):\s*F\s*:?(?!>)")
-        text = pattern_f.sub(f_emoji_code, text)
-
-    return text
-
-
 COLOR_MAP: dict[str, discord.Color] = {
     "light_grey": discord.Color.light_grey(),
     "green": discord.Color.green(),
@@ -151,60 +136,6 @@ def convert_mcp_tools_to_openai(mcp_tools: list) -> list:
         openai_tools.append(openai_tool)
 
     return openai_tools
-
-
-def parse_birthday_date(content: str) -> datetime:
-    """Парсит дату рождения из текста команды.
-
-    Ожидаемый формат: '!birthday DD.MM.YYYY' или просто 'DD.MM.YYYY'.
-    """
-    # Убираем возможный префикс команды
-    text = content.strip()
-    for prefix in ("!birthday", "?birthday"):
-        if text.startswith(prefix):
-            text = text[len(prefix) :].strip()
-            break
-
-    if not re.match(r"^\d{2}\.\d{2}\.\d{4}$", text):
-        raise ValueError("Некорректный формат даты. Используйте DD.MM.YYYY.")
-
-    try:
-        return datetime.strptime(text, "%d.%m.%Y")
-    except Exception:
-        raise ValueError("Некорректный формат даты. Используйте DD.MM.YYYY.")
-
-
-def parse_holiday_command(content: str) -> tuple[int, int, str]:
-    """Парсит команду добавления праздника.
-
-    Ожидаемый формат: '!holiday DD.MM Название праздника'.
-    Возвращает (day, month, holiday_name).
-    """
-    try:
-        args = content.split(" ", 2)
-        if len(args) < 3:
-            raise ValueError("Используйте формат: `!holiday DD.MM Название праздника`")
-
-        date_str = args[1]
-        holiday_name = args[2]
-
-        if not re.match(r"^\d{2}\.\d{2}$", date_str):
-            raise ValueError("Некорректный формат даты. Используйте DD.MM (например, 01.01).")
-
-        day, month = map(int, date_str.split("."))
-
-        if not (1 <= month <= 12):
-            raise ValueError("Месяц должен быть от 1 до 12.")
-
-        if not (1 <= day <= 31):
-            raise ValueError("День должен быть от 1 до 31.")
-
-        return day, month, holiday_name
-
-    except ValueError as ve:
-        raise ve
-    except Exception:
-        raise ValueError("Ошибка разбора команды. Используйте DD.MM Название.")
 
 
 def chunk_message(text: str, limit: int = 1900) -> list[str]:
