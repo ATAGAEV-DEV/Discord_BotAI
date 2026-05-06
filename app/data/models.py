@@ -152,6 +152,31 @@ class Holiday(Base):
     __table_args__ = (PrimaryKeyConstraint("day", "month", name="pk_holidays"),)
 
 
+class UserDescription(Base):
+    """Модель описания пользователя Discord.
+
+    Хранит ник пользователя, его описание и привязку к серверу.
+    Заменяет захардкоженный словарь USER_DESCRIPTIONS.
+    """
+
+    __tablename__ = "user_descriptions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    nick = Column(String(50), nullable=False)
+    description = Column(Text, nullable=False)
+    guild_id = Column(BigInteger, nullable=False)
+    datetime_insert = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("nick", "guild_id", name="uq_user_description_per_guild"),
+        Index("idx_user_desc_guild", "guild_id"),
+    )
+
+    def __repr__(self) -> str:
+        """Строковое представление модели UserDescription."""
+        return f"<UserDescription(nick='{self.nick}', guild_id={self.guild_id})>"
+
+
 async def init_models() -> None:
     """Создает таблицы в базе данных, если они не существуют."""
     async with engine.begin() as conn:
