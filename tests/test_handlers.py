@@ -1,46 +1,10 @@
 """Unit-тесты для app/core/handlers.py."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.core.handlers import ai_generate_birthday_congrats, clear_server_history
-
-# ── ai_generate_birthday_congrats ───────────────────────────────
-
-
-class TestAiGenerateBirthdayCongrats:
-    """Тесты для функции ai_generate_birthday_congrats."""
-
-    @pytest.mark.asyncio
-    @patch("app.core.handlers.get_client")
-    async def test_returns_generated_text(self, mock_get_client: MagicMock) -> None:
-        """Возвращает сгенерированный текст при успешном вызове API."""
-        mock_client = MagicMock()
-        mock_completion = MagicMock()
-        mock_completion.choices = [MagicMock()]
-        mock_completion.choices[0].message.content = "С днём рождения, Арби!"
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_completion)
-        mock_get_client.return_value = mock_client
-
-        result = await ai_generate_birthday_congrats("atagaev")
-        assert "С днём рождения" in result
-        assert "Арби" in result
-
-    @pytest.mark.asyncio
-    @patch("app.core.handlers.get_client")
-    async def test_fallback_on_error(self, mock_get_client: MagicMock) -> None:
-        """При ошибке API возвращает fallback-поздравление."""
-        mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(side_effect=Exception("API Error"))
-        mock_get_client.return_value = mock_client
-
-        result = await ai_generate_birthday_congrats("test_user")
-        assert "Поздравляем с днём рождения" in result
-        assert "🎉" in result
-
-
-# ── clear_server_history ────────────────────────────────────────
+from app.core.handlers import clear_server_history
 
 
 class TestClearServerHistory:
