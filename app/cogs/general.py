@@ -53,8 +53,6 @@ class General(commands.Cog):
                 await ctx.send(embed=embed, file=file)
         except ValueError as ve:
             await ctx.send(str(ve))
-        except Exception as e:
-            await ctx.send(f"Произошла ошибка при получении статистики: {e}")
 
 
 async def setup(bot: DisBot) -> None:
