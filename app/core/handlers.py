@@ -22,30 +22,26 @@ async def clear_server_history(server_id: int) -> str | None:
 
     Оставляет только документы типа 'server_users'.
     """
-    try:
-        collection = llama_manager.get_server_collection(server_id)
-        results = collection.get()
-        if results and "ids" in results and results["ids"]:
-            ids_to_delete = []
-            metadatas = results.get("metadatas", [])
+    collection = llama_manager.get_server_collection(server_id)
+    results = collection.get()
+    if results and "ids" in results and results["ids"]:
+        ids_to_delete = []
+        metadatas = results.get("metadatas", [])
 
-            for i, metadata in enumerate(metadatas):
-                if metadata.get("document_type") != "server_users":
-                    ids_to_delete.append(results["ids"][i])
+        for i, metadata in enumerate(metadatas):
+            if metadata.get("document_type") != "server_users":
+                ids_to_delete.append(results["ids"][i])
 
-            if ids_to_delete:
-                collection.delete(ids=ids_to_delete)
-                return f"Удалено {len(ids_to_delete)} документов из индекса сервера {server_id}"
-            else:
-                return (
-                    f"В индексе сервера {server_id} нет документов для удаления "
-                    "(кроме списка пользователей)"
-                )
+        if ids_to_delete:
+            collection.delete(ids=ids_to_delete)
+            return f"Удалено {len(ids_to_delete)} документов из индекса сервера {server_id}"
         else:
-            return f"Индекс сервера {server_id} уже пуст"
-    except Exception as e:
-        print(f"Ошибка очистки индекса LlamaIndex: {e}")
-        return f"Произошла ошибка при очистке индекса: {e}"
+            return (
+                f"В индексе сервера {server_id} нет документов для удаления "
+                "(кроме списка пользователей)"
+            )
+    else:
+        return f"Индекс сервера {server_id} уже пуст"
 
 
 async def ai_generate(
@@ -75,45 +71,41 @@ async def ai_generate(
         user_msg = {"role": "user", "content": f"[Пользователь: {name}] {text}"}
         messages.append(user_msg)
 
-        try:
-            openai_messages = []
-            for msg in messages:
-                if msg["role"] == "system":
-                    openai_messages.append(
-                        ChatCompletionSystemMessageParam(role="system", content=msg["content"])
-                    )
-                elif msg["role"] == "user":
-                    openai_messages.append(
-                        ChatCompletionUserMessageParam(role="user", content=msg["content"])
-                    )
+        openai_messages = []
+        for msg in messages:
+            if msg["role"] == "system":
+                openai_messages.append(
+                    ChatCompletionSystemMessageParam(role="system", content=msg["content"])
+                )
+            elif msg["role"] == "user":
+                openai_messages.append(
+                    ChatCompletionUserMessageParam(role="user", content=msg["content"])
+                )
 
-            completion = await get_client().chat.completions.create(
-                model=get_model(),
-                messages=openai_messages,
-                temperature=0.8,
-                top_p=0.8,
-                frequency_penalty=0.1,
-                presence_penalty=0.2,
-                max_tokens=4500,
-                timeout=60.0,
-            )
+        completion = await get_client().chat.completions.create(
+            model=get_model(),
+            messages=openai_messages,
+            temperature=0.8,
+            top_p=0.8,
+            frequency_penalty=0.1,
+            presence_penalty=0.2,
+            max_tokens=4500,
+            timeout=60.0,
+        )
 
-            response_text = completion.choices[0].message.content
-            cleaned_response_text = clean_text(response_text)
+        response_text = completion.choices[0].message.content
+        cleaned_response_text = clean_text(response_text)
 
-            messages_to_index = [
-                {"role": "user", "content": f"[Пользователь: {name}] {text}"},
-                {"role": "assistant", "content": cleaned_response_text},
-            ]
-            # Индексация в фоновом режиме (не блокирует ответ)
-            asyncio.create_task(llama_manager.index_messages(server_id, messages_to_index))
-            print(f"Сообщения {messages}")
-            print(count_tokens(messages))
-            print(f"Ответ от ИИ: {response_text}")
-            return cleaned_response_text
-        except Exception as e:
-            print(f"Ошибка при вызове OpenAI API: {e}")
-            return "Произошла ошибка. Пожалуйста, попробуйте позже."
+        messages_to_index = [
+            {"role": "user", "content": f"[Пользователь: {name}] {text}"},
+            {"role": "assistant", "content": cleaned_response_text},
+        ]
+        # Индексация в фоновом режиме (не блокирует ответ)
+        asyncio.create_task(llama_manager.index_messages(server_id, messages_to_index))
+        print(f"Сообщения {messages}")
+        print(count_tokens(messages))
+        print(f"Ответ от ИИ: {response_text}")
+        return cleaned_response_text
 
     try:
         return await asyncio.wait_for(_generate_inner(), timeout=AI_GENERATE_TIMEOUT)
