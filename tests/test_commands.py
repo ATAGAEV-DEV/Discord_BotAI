@@ -17,10 +17,9 @@ from app.core.bot import DisBot
 def mock_bot() -> MagicMock:
     """Фикстура для мока бота."""
     bot = MagicMock(spec=DisBot)
-    bot.weather_enabled = True
-    bot.search_enabled = True
     bot.context_limit = 50
     bot.command_prefix = "!"
+    bot.youtube_notifier = MagicMock()
     return bot
 
 
@@ -132,54 +131,6 @@ async def test_rank_command_error(
     await general_cog.rank_command.callback(general_cog, mock_ctx)
 
     mock_ctx.send.assert_called_with("Произошла ошибка при получении статистики: DB Error")
-
-
-# ── birthday_command ────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-@patch("app.cogs.general.save_birthday", new_callable=AsyncMock)
-@patch("app.cogs.general.parse_birthday_date")
-async def test_birthday_command_success(
-    mock_parse: MagicMock, mock_save: AsyncMock, general_cog: General, mock_ctx: AsyncMock
-) -> None:
-    """Команда !birthday сохраняет дату."""
-    from datetime import datetime
-
-    fake_dt = datetime(2000, 5, 12)
-    mock_parse.return_value = fake_dt
-
-    await general_cog.birthday_command.callback(general_cog, mock_ctx, date="12.05.2000")
-
-    mock_parse.assert_called_once_with("12.05.2000")
-    mock_save.assert_called_once_with(12345, "Test User", "test_user", fake_dt)
-    mock_ctx.send.assert_called_with("Дата рождения сохранена.")
-
-
-@pytest.mark.asyncio
-@patch("app.cogs.general.parse_birthday_date")
-async def test_birthday_command_value_error(
-    mock_parse: MagicMock, general_cog: General, mock_ctx: AsyncMock
-) -> None:
-    """Ошибка валидации даты в !birthday."""
-    mock_parse.side_effect = ValueError("Неверный формат")
-
-    await general_cog.birthday_command.callback(general_cog, mock_ctx, date="invalid")
-
-    mock_ctx.send.assert_called_with("Неверный формат")
-
-
-# ── manual_birthday_command ─────────────────────────────────────
-
-
-@pytest.mark.asyncio
-@patch("app.cogs.admin.send_birthday_congratulations", new_callable=AsyncMock)
-async def test_manual_birthday_command(
-    mock_send: AsyncMock, admin_cog: Admin, mock_ctx: AsyncMock
-) -> None:
-    """Команда !check_birthday вызывает рассылку."""
-    await admin_cog.manual_birthday_command.callback(admin_cog, mock_ctx)
-    mock_send.assert_called_once_with(admin_cog.bot)
 
 
 # ── reset_command ───────────────────────────────────────────────
@@ -304,13 +255,9 @@ async def test_youtube_toggle_command(youtube_cog: YouTube, mock_ctx: AsyncMock)
 
 
 @pytest.mark.asyncio
-@patch("app.core.handlers.check_weather_intent", new_callable=AsyncMock)
-@patch("app.core.handlers.check_search_intent", new_callable=AsyncMock)
 @patch("app.core.handlers.ai_generate", new_callable=AsyncMock)
 async def test_on_command_not_found_generates_ai_response(
     mock_ai: AsyncMock,
-    mock_search: AsyncMock,
-    mock_weather: AsyncMock,
     error_cog: ErrorHandler,
     mock_ctx: AsyncMock,
 ) -> None:
@@ -318,8 +265,6 @@ async def test_on_command_not_found_generates_ai_response(
     error = commands.CommandNotFound()
     mock_ctx.message.content = "Как дела?"
     mock_ai.return_value = "Нормально"
-    mock_weather.return_value = None
-    mock_search.return_value = None
 
     await error_cog.on_command_error(mock_ctx, error)
 
