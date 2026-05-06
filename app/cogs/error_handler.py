@@ -1,4 +1,3 @@
-import asyncio
 import time
 from collections import defaultdict
 
@@ -38,25 +37,10 @@ class ErrorHandler(commands.Cog):
             server_id = ctx.guild.id if ctx.guild else None
 
             async with ctx.typing():
-                weather_task = (
-                    handlers.check_weather_intent(ctx.message.content)
-                    if self.bot.weather_enabled
-                    else asyncio.sleep(0)
-                )
-                search_task = (
-                    handlers.check_search_intent(ctx.message.content)
-                    if self.bot.search_enabled
-                    else asyncio.sleep(0)
-                )
-
-                tool_weather, tool_search = await asyncio.gather(weather_task, search_task)
-
                 response = await handlers.ai_generate(
                     ctx.message.content,
                     server_id,
                     ctx.author,
-                    tool_weather,
-                    tool_search,
                     limit=self.bot.context_limit,
                 )
                 await ctx.send(f"{ctx.author.mention} {response}")
@@ -76,11 +60,7 @@ class ErrorHandler(commands.Cog):
             await ctx.send("❌ Эта команда недоступна в личных сообщениях.")
         elif isinstance(original_error, (ConnectionError, TimeoutError)):
             await ctx.send("❌ Проблема с сетью. Попробуйте позже.")
-            from app.services.telegram_notifier import telegram_notifier
 
-            await telegram_notifier.send_message(
-                f"⚠️ <b>Сетевая ошибка</b>\nОшибка в команде `{ctx.command.name}`: {original_error}"
-            )
         else:
             await ctx.send("❌ Произошла ошибка при выполнении команды.")
             print(f"Command error: {error}")
