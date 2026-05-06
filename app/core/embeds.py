@@ -51,6 +51,18 @@ def create_help_embed() -> discord.Embed:
     )
 
     embed.add_field(
+        name="📝 Описания пользователей",
+        value=(
+            "`!desc_list` - показать все описания\n"
+            "`!desc_add [ник] [описание]` - добавить/обновить\n"
+            "`!desc_remove [ник]` - удалить описание\n"
+            "`!desc_reload` - перезагрузить из БД\n"
+            "*(все команды кроме desc_list только для админов)*"
+        ),
+        inline=False,
+    )
+
+    embed.add_field(
         name="🛡️ Администрирование",
         value=(
             "`!reset` - очистка истории чата\n"
