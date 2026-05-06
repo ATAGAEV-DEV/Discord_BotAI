@@ -1,5 +1,3 @@
-"""Глобальный обработчик ошибок команд."""
-
 import asyncio
 import time
 from collections import defaultdict
