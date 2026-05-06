@@ -1,9 +1,3 @@
-"""In-memory кэш описаний пользователей.
-
-Загружается из БД один раз при старте бота.
-Обновляется только при вызове save/delete — без лишних запросов к БД.
-"""
-
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
