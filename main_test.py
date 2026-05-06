@@ -8,14 +8,11 @@ try:
     import asyncpg  # noqa: F401
     import chromadb  # noqa: F401
     import discord
-    import httpx  # noqa: F401
     import llama_index.core  # noqa: F401
-    import mcp  # noqa: F401
     import openai  # noqa: F401
     import PIL  # noqa: F401
     import pytz  # noqa: F401
     import sqlalchemy  # noqa: F401
-    import tavily  # noqa: F401
     import tiktoken  # noqa: F401
     from dotenv import load_dotenv  # noqa: F401
 
