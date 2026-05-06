@@ -84,9 +84,7 @@ async def remove(nick: str, guild_id: int) -> str:
     return f"Описание для '{nick}' не найдено."
 
 
-async def _find_existing(
-    session: AsyncSession, nick: str, guild_id: int
-) -> UserDescription | None:
+async def _find_existing(session: AsyncSession, nick: str, guild_id: int) -> UserDescription | None:
     """Находит существующую запись описания пользователя."""
     query = select(UserDescription).where(
         UserDescription.nick == nick, UserDescription.guild_id == guild_id
