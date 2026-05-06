@@ -4,6 +4,7 @@ from functools import wraps
 from typing import Any
 
 from sqlalchemy import and_, delete, func, select, update
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.models import (
@@ -32,12 +33,14 @@ def db_operation(operation_name: str) -> Callable:
                     return await asyncio.wait_for(
                         func_inner(session, *args, **kwargs), timeout=DB_TIMEOUT
                     )
-                except TimeoutError:
-                    raise Exception(f"Таймаут при {operation_name}.")
+                except TimeoutError as e:
+                    raise TimeoutError(f"Таймаут при {operation_name}.") from e
+                except OperationalError as e:
+                    raise TimeoutError(f"Ошибка подключения/таймаут БД при {operation_name}.") from e
+                except SQLAlchemyError as e:
+                    raise RuntimeError(f"Ошибка базы данных при {operation_name}: {e}") from e
                 except Exception as e:
-                    if isinstance(e, (ValueError, Exception)) and "Таймаут" in str(e):
-                        raise
-                    raise Exception(f"Ошибка при {operation_name}: {e}")
+                    raise RuntimeError(f"Непредвиденная ошибка при {operation_name}: {e}") from e
 
         return wrapper
 
