@@ -88,7 +88,7 @@ class LlamaIndexManager:
                     storage_context=storage_context,
                     show_progress=False,
                 ),
-                timeout=INDEX_TIMEOUT
+                timeout=INDEX_TIMEOUT,
             )
             return index
         except TimeoutError:
@@ -105,13 +105,12 @@ class LlamaIndexManager:
             vector_store = ChromaVectorStore(chroma_collection=collection)
             index = await asyncio.wait_for(
                 asyncio.to_thread(VectorStoreIndex.from_vector_store, vector_store),
-                timeout=QUERY_TIMEOUT
+                timeout=QUERY_TIMEOUT,
             )
 
             retriever = index.as_retriever(similarity_top_k=limit)
             nodes = await asyncio.wait_for(
-                asyncio.to_thread(retriever.retrieve, query),
-                timeout=QUERY_TIMEOUT
+                asyncio.to_thread(retriever.retrieve, query), timeout=QUERY_TIMEOUT
             )
 
             relevant_contexts = [node.text for node in nodes]
@@ -129,7 +128,7 @@ class LlamaIndexManager:
             collection = self.get_server_collection(server_id)
             await asyncio.wait_for(
                 asyncio.to_thread(collection.delete, where={"document_type": "server_users"}),
-                timeout=5.0
+                timeout=5.0,
             )
             users_text = f"Список пользователей сервера: {', '.join(users)}"
             document = Document(
@@ -146,7 +145,7 @@ class LlamaIndexManager:
                     storage_context=storage_context,
                     show_progress=False,
                 ),
-                timeout=INDEX_TIMEOUT
+                timeout=INDEX_TIMEOUT,
             )
 
             print(f"Обновлен список пользователей сервера {server_id}: {len(users)} пользователей")
