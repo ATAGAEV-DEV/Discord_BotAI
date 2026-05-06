@@ -13,7 +13,6 @@ from app.tools.utils import (
     darken_color,
     enrich_users_context,
     get_rank_description,
-    replace_emojis,
     user_prompt,
     users_context,
 )
@@ -313,22 +312,4 @@ class TestCleanText:
     def test_plain_text_unchanged(self) -> None:
         """Обычный текст не меняется."""
         result = clean_text("обычный текст")
-        assert result == "обычный текст"
-
-
-# ── replace_emojis ──────────────────────────────────────────────
-
-
-class TestReplaceEmojis:
-    """Тесты для функции replace_emojis."""
-
-    def test_replaces_known_emoji(self) -> None:
-        """Заменяет известные текстовые эмодзи на Discord-формат."""
-        result = replace_emojis("Привет :yoba: мир")
-        assert "<:yoba:1101900451852599427>" in result
-        assert "Привет" in result
-
-    def test_no_emoji_unchanged(self) -> None:
-        """Текст без эмодзи не меняется."""
-        result = replace_emojis("обычный текст")
         assert result == "обычный текст"
