@@ -5,7 +5,7 @@ from app.core.ai_config import get_client, get_model
 from app.core.bot import DisBot
 from app.data import user_descriptions_cache
 from app.tools.prompt import ROAST_PERSONAS, ROAST_PROMPT
-from app.tools.utils import clean_text, replace_emojis
+from app.tools.utils import clean_text
 
 
 class Toxic(commands.Cog):
@@ -81,9 +81,7 @@ class Toxic(commands.Cog):
             history_text = "\n".join(messages)
 
             descriptions = user_descriptions_cache.get_all()
-            user_info_text = "\n".join(
-                [f"- {k}: {v}" for k, v in descriptions.items()]
-            )
+            user_info_text = "\n".join([f"- {k}: {v}" for k, v in descriptions.items()])
 
             system_content = ROAST_PROMPT.format(user_info=user_info_text)
 
@@ -111,8 +109,7 @@ class Toxic(commands.Cog):
                 )
                 response = completion.choices[0].message.content or ""
                 cleaned_response_text = clean_text(response)
-                emoji_response_text = replace_emojis(cleaned_response_text)
-                await ctx.send(emoji_response_text)
+                await ctx.send(cleaned_response_text)
 
         except Exception as e:
             await ctx.send(f"❌ Не удалось прожарить: {e}")
