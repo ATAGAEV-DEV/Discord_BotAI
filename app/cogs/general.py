@@ -2,8 +2,8 @@ from discord.ext import commands
 
 import app.core.embeds as em
 from app.core.bot import DisBot
-from app.data.request import get_rank, save_birthday
-from app.tools.utils import get_rank_description, parse_birthday_date
+from app.data.request import get_rank
+from app.tools.utils import get_rank_description
 
 
 class General(commands.Cog):
@@ -55,24 +55,6 @@ class General(commands.Cog):
             await ctx.send(str(ve))
         except Exception as e:
             await ctx.send(f"Произошла ошибка при получении статистики: {e}")
-
-    @commands.command(name="birthday")
-    @commands.cooldown(rate=1, per=30.0, type=commands.BucketType.user)
-    async def birthday_command(self, ctx: commands.Context, *, date: str) -> None:
-        """Сохранить дату рождения."""
-        try:
-            birthday = parse_birthday_date(date)
-            await save_birthday(
-                ctx.author.id,
-                ctx.author.display_name,
-                ctx.author.name,
-                birthday,
-            )
-            await ctx.send("Дата рождения сохранена.")
-        except ValueError as ve:
-            await ctx.send(str(ve))
-        except Exception as e:
-            await ctx.send(f"Произошла ошибка при сохранении даты рождения: {e}")
 
 
 async def setup(bot: DisBot) -> None:
