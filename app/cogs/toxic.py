@@ -1,5 +1,3 @@
-"""Команда прожарки (toxic/roast)."""
-
 from discord.ext import commands
 from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
 
