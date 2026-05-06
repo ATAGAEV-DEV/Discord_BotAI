@@ -2,22 +2,23 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.data.models import UserDescription, async_session
+from app.data.decorators import db_operation
+from app.data.models import UserDescription
 
 # Глобальный кэш: {guild_id: {nick: description}}
 _cache: dict[int, dict[str, str]] = {}
 _loaded: bool = False
 
 
-async def load_all() -> None:
+@db_operation("загрузке описаний пользователей")
+async def load_all(session: AsyncSession) -> None:
     """Загружает все описания из БД в кэш.
 
     Вызывается один раз при старте бота (on_ready).
     """
     global _loaded  # noqa: PLW0603
-    async with async_session() as session:
-        result = await session.execute(select(UserDescription))
-        rows = result.scalars().all()
+    result = await session.execute(select(UserDescription))
+    rows = result.scalars().all()
 
     _cache.clear()
     for row in rows:
@@ -47,33 +48,33 @@ def get_all() -> dict[str, str]:
     return merged
 
 
-async def save(nick: str, description: str, guild_id: int) -> str:
+@db_operation("сохранении описания пользователя")
+async def save(session: AsyncSession, nick: str, description: str, guild_id: int) -> str:
     """Сохраняет описание в БД и обновляет кэш."""
-    async with async_session() as session:
-        existing = await _find_existing(session, nick, guild_id)
+    existing = await _find_existing(session, nick, guild_id)
 
-        if existing:
-            existing.description = description
-            action = "обновлено"
-        else:
-            session.add(UserDescription(nick=nick, description=description, guild_id=guild_id))
-            action = "добавлено"
+    if existing:
+        existing.description = description
+        action = "обновлено"
+    else:
+        session.add(UserDescription(nick=nick, description=description, guild_id=guild_id))
+        action = "добавлено"
 
-        await session.commit()
+    await session.commit()
 
     # Обновляем кэш
     _cache.setdefault(guild_id, {})[nick] = description
     return f"Описание для '{nick}' успешно {action}!"
 
 
-async def remove(nick: str, guild_id: int) -> str:
+@db_operation("удалении описания пользователя")
+async def remove(session: AsyncSession, nick: str, guild_id: int) -> str:
     """Удаляет описание из БД и кэша."""
-    async with async_session() as session:
-        query = sa_delete(UserDescription).where(
-            UserDescription.nick == nick, UserDescription.guild_id == guild_id
-        )
-        result = await session.execute(query)
-        await session.commit()
+    query = sa_delete(UserDescription).where(
+        UserDescription.nick == nick, UserDescription.guild_id == guild_id
+    )
+    result = await session.execute(query)
+    await session.commit()
 
     # Обновляем кэш
     guild_cache = _cache.get(guild_id, {})
