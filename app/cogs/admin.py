@@ -32,19 +32,16 @@ class Admin(commands.Cog):
     @admin_or_owner()
     async def update_user_command(self, ctx: commands.Context) -> None:
         """Обновить список пользователей сервера."""
-        try:
-            server = ctx.guild
-            members = server.members
-            all_server_users = [f"{member.name}" for member in members if not member.bot]
+        server = ctx.guild
+        members = server.members
+        all_server_users = [f"{member.name}" for member in members if not member.bot]
 
-            await handlers.llama_manager.index_server_users(server.id, all_server_users)
+        await handlers.llama_manager.index_server_users(server.id, all_server_users)
 
-            await ctx.send(
-                f"✅ Список пользователей сервера обновлен! "
-                f"Добавлено {len(all_server_users)} пользователей."
-            )
-        except Exception as e:
-            await ctx.send(f"❌ Ошибка: {e}")
+        await ctx.send(
+            f"✅ Список пользователей сервера обновлен! "
+            f"Добавлено {len(all_server_users)} пользователей."
+        )
 
     @commands.command(name="ai")
     @admin_or_owner()
