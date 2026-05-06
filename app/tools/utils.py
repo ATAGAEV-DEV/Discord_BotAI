@@ -120,24 +120,6 @@ def get_rank_description(message_count: int) -> dict:
     }
 
 
-def convert_mcp_tools_to_openai(mcp_tools: list) -> list:
-    """Конвертирует MCP инструменты в формат OpenAI."""
-    openai_tools = []
-
-    for tool in mcp_tools:
-        openai_tool = {
-            "type": "function",
-            "function": {
-                "name": tool.name,
-                "description": tool.description or "Инструмент без описания",
-                "parameters": tool.inputSchema,
-            },
-        }
-        openai_tools.append(openai_tool)
-
-    return openai_tools
-
-
 def chunk_message(text: str, limit: int = 1900) -> list[str]:
     """Разбивает длинное сообщение на части не более limit символов.
 
