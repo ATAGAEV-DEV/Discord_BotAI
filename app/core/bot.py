@@ -5,7 +5,6 @@ from app.core.scheduler import start_scheduler
 from app.data import user_descriptions_cache
 from app.data.models import init_models
 from app.services.daily_report import ReportGenerator
-from app.services.telegram_notifier import telegram_notifier
 from app.services.youtube_notifier import YouTubeNotifier
 from app.tools.utils import contains_only_urls
 
@@ -17,9 +16,6 @@ class DisBot(commands.Bot):
         self,
         command_prefix: str,
         intents: discord.Intents,
-        telegram_enabled: bool = True,
-        weather_enabled: bool = True,
-        search_enabled: bool = True,
         context_limit: int = 50,
         report_msg_limit: int = 15,
         report_time_limit: int = 60,
@@ -29,9 +25,7 @@ class DisBot(commands.Bot):
         super().__init__(command_prefix=command_prefix, intents=intents, help_command=help_command)
         self.report_generator: ReportGenerator | None = None
         self.youtube_notifier: YouTubeNotifier = YouTubeNotifier(self)
-        self.telegram_enabled: bool = telegram_enabled
-        self.weather_enabled: bool = weather_enabled
-        self.search_enabled: bool = search_enabled
+
         self.context_limit: int = context_limit
         self.report_msg_limit: int = report_msg_limit
         self.report_time_limit: int = report_time_limit
@@ -53,25 +47,15 @@ class DisBot(commands.Bot):
         await user_descriptions_cache.load_all()
         self.report_generator = ReportGenerator(self)
 
-        telegram_notifier.enabled = telegram_notifier.enabled and self.telegram_enabled
-        if not self.telegram_enabled:
-            print("Telegram уведомления отключены в настройках бота.")
-
         print("Бот успешно подключился к Discord")
 
     async def on_disconnect(self) -> None:
         """Обработка отключения от Discord."""
         print("Бот отключился от Discord")
-        await telegram_notifier.send_message(
-            "⚠️ <b>Discord бот отключился</b>\nСоединение с Discord потеряно"
-        )
 
     async def on_resumed(self) -> None:
         """Обработка восстановления соединения с Discord."""
         print("Соединение с Discord восстановлено")
-        await telegram_notifier.send_message(
-            "✅ <b>Discord бот восстановил соединение</b>\nРабота продолжается"
-        )
 
     async def on_message(self, message: discord.Message) -> None:
         """Обработка входящих сообщений."""
