@@ -4,7 +4,8 @@ from datetime import datetime
 import discord
 import tiktoken
 
-from app.tools.prompt import EMOJIS, RANK_CONFIG, SYSTEM_PROMPT, USER_DESCRIPTIONS
+from app.data import user_descriptions_cache
+from app.tools.prompt import EMOJIS, RANK_CONFIG, SYSTEM_PROMPT
 
 ENCODING = tiktoken.encoding_for_model("gpt-4o-mini")
 
@@ -12,14 +13,15 @@ ENCODING = tiktoken.encoding_for_model("gpt-4o-mini")
 def user_prompt(name: str) -> str:
     """Формирует системный промпт для пользователя.
 
-    Если имя совпадает с ключами в P.USER_DESCRIPTIONS.
+    Если имя совпадает с ключами из кэша описаний пользователей.
     """
-    if str(name).strip() in USER_DESCRIPTIONS:
+    descriptions = user_descriptions_cache.get_all()
+    if str(name).strip() in descriptions:
         user_info = (
             "Информация по пользователям с name (они должны совпадать побуквенно, "
             "иначе это другой юзер). Но не упоминать об этом постоянно:"
         )
-        user_info += f"\n- {name}: {USER_DESCRIPTIONS[name]}"
+        user_info += f"\n- {name}: {descriptions[name]}"
         prompt = SYSTEM_PROMPT.format(user_info=user_info).strip()
         return prompt
     else:
