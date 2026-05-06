@@ -1,6 +1,5 @@
 import asyncio
 from collections.abc import Callable
-from datetime import date, datetime
 from functools import wraps
 from typing import Any
 
@@ -8,9 +7,7 @@ from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.models import (
-    Birthday,
     ChannelMessage,
-    Holiday,
     UserDescription,
     UserMessageStats,
     async_session,
@@ -72,26 +69,6 @@ async def delete_channel_messages(session: AsyncSession, channel_id: int) -> Non
     """Удаляет сообщения канала из базы данных."""
     query = delete(ChannelMessage).where(ChannelMessage.channel_id == channel_id)
     await session.execute(query)
-    await session.commit()
-
-
-@db_operation("сохранении даты рождения")
-async def save_birthday(
-    session: AsyncSession, user_id: int, display_name: str, name: str, birthday: datetime
-) -> None:
-    """Сохраняет дату рождения в БД."""
-    query = select(Birthday).where(Birthday.user_id == user_id)
-    result = await session.execute(query)
-    birthday_entry = result.scalar()
-    if birthday_entry:
-        birthday_entry.birthday = birthday
-        birthday_entry.display_name = display_name
-        birthday_entry.name = name
-    else:
-        birthday_entry = Birthday(
-            user_id=user_id, display_name=display_name, name=name, birthday=birthday
-        )
-        session.add(birthday_entry)
     await session.commit()
 
 
@@ -180,37 +157,6 @@ async def get_user_rank(session: AsyncSession, user_id: int, guild_id: int) -> i
     return user_rank if user_rank is not None else 0
 
 
-@db_operation("проверке праздника")
-async def check_holiday(session: AsyncSession, current_date: date) -> str | None:
-    """Проверяет, является ли текущая дата праздником."""
-    query = select(Holiday).where(
-        Holiday.day == current_date.day, Holiday.month == current_date.month
-    )
-    result = await session.execute(query)
-    holiday = result.scalar_one_or_none()
-    return holiday.name if holiday else None
-
-
-@db_operation("сохранении праздника")
-async def save_holiday(session: AsyncSession, day: int, month: int, holiday_name: str) -> str:
-    """Сохраняет праздник в БД."""
-    query = select(Holiday).where(Holiday.day == day, Holiday.month == month)
-    result = await session.execute(query)
-    existing_holiday = result.scalar_one_or_none()
-
-    if existing_holiday:
-        existing_holiday.name = holiday_name
-        action = "обновлен"
-    else:
-        new_holiday = Holiday(day=day, month=month, name=holiday_name)
-        session.add(new_holiday)
-        action = "добавлен"
-
-    await session.commit()
-    date_str = f"{day:02d}.{month:02d}"
-    return f"Праздник '{holiday_name}' на {date_str} успешно {action}!"
-
-
 @db_operation("получении описаний пользователей")
 async def get_user_descriptions(session: AsyncSession, guild_id: int) -> dict[str, str]:
     """Получает описания пользователей для указанного сервера.
@@ -258,4 +204,3 @@ async def delete_user_description(session: AsyncSession, nick: str, guild_id: in
     if result.rowcount > 0:
         return f"Описание для '{nick}' удалено."
     return f"Описание для '{nick}' не найдено."
-
