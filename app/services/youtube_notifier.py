@@ -45,7 +45,7 @@ class YouTubeNotifier:
         latest_video = feed.entries[0]
         video_id = latest_video.get("yt_videoid")
         author = latest_video.get("author")
-        published_at = datetime.now(tz=pytz.utc)
+        published_at = datetime.now(tz=pytz.utc).replace(tzinfo=None)
 
         async with async_session() as session:
             video_query = select(YouTubeVideo).where(
