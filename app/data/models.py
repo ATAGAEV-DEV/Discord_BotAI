@@ -113,6 +113,32 @@ class DualSessionProxy:
         await self.local.rollback()
         await self.remote.rollback()
 
+    async def delete(self, instance: Any) -> None:
+        """Удаляет объект из обеих БД.
+
+        Для удалённой БД находит запись по первичному ключу и удаляет её отдельно,
+        поскольку ORM-объект привязан к локальной сессии.
+        """
+        from sqlalchemy import inspect as sa_inspect
+        from sqlalchemy import select as sa_select
+
+        mapper = sa_inspect(instance.__class__)
+        pk_cols: list[str] = [col.key for col in mapper.primary_key]
+        pk_values: dict[str, Any] = {col: getattr(instance, col) for col in pk_cols}
+
+        await self.local.delete(instance)
+
+        try:
+            stmt = sa_select(instance.__class__)
+            for col, val in pk_values.items():
+                stmt = stmt.where(getattr(instance.__class__, col) == val)
+            remote_result = await self.remote.execute(stmt)
+            remote_instance = remote_result.scalar_one_or_none()
+            if remote_instance is not None:
+                await self.remote.delete(remote_instance)
+        except Exception as e:
+            print(f"Ошибка удаления из удалённой БД: {e}")
+
 
 @asynccontextmanager
 async def async_session() -> AsyncGenerator[DualSessionProxy]:
