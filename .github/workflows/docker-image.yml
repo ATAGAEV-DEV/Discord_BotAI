@@ -29,6 +29,8 @@ jobs:
         run: |
           docker run -d --name dcchatbot \
             --restart unless-stopped \
+            --dns 8.8.8.8 \
+            --dns 1.1.1.1 \
             -v chroma_data:/python-app/chroma_db \
             -e WEATHER_API="${{ secrets.WEATHER_API }}" \
             -e DC_TOKEN="${{ secrets.DC_TOKEN }}" \
