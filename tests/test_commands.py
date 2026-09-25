@@ -20,6 +20,7 @@ def mock_bot() -> MagicMock:
     bot.context_limit = 50
     bot.command_prefix = "!"
     bot.youtube_notifier = MagicMock()
+    bot.guild_emoji_ids = {}
     return bot
 
 

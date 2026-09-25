@@ -9,6 +9,7 @@ from app.tools.utils import (
     darken_color,
     enrich_users_context,
     get_rank_description,
+    replace_emojis,
     strip_emoji,
     user_prompt,
 )
@@ -233,6 +234,58 @@ class TestEnrichUsersContext:
     def test_empty_contexts(self) -> None:
         """Пустой список — пустой результат."""
         assert enrich_users_context([], {}) == []
+
+
+# ── replace_emojis ──────────────────────────────────────────────
+
+
+class TestReplaceEmojis:
+    """Тесты для функции replace_emojis."""
+
+    EMOJI_IDS = {"yoba": "1101900451852599427", "Gachi1": "469464559959277578"}
+
+    def test_replaces_known_emoji(self) -> None:
+        """Известный эмодзи заменяется на Discord-формат."""
+        result = replace_emojis("привет [e:yoba] пока", self.EMOJI_IDS)
+        assert result == "привет <:yoba:1101900451852599427> пока"
+
+    def test_removes_unknown_emoji(self) -> None:
+        """Неизвестный эмодзи удаляется из текста."""
+        result = replace_emojis("текст [e:unknown] конец", self.EMOJI_IDS)
+        assert "[e:unknown]" not in result
+        assert "текст" in result
+        assert "конец" in result
+
+    def test_multiple_emojis(self) -> None:
+        """Несколько эмодзи обрабатываются корректно."""
+        result = replace_emojis("[e:yoba] смеюсь [e:Gachi1]", self.EMOJI_IDS)
+        assert "<:yoba:1101900451852599427>" in result
+        assert "<:Gachi1:469464559959277578>" in result
+
+    def test_mixed_known_and_unknown(self) -> None:
+        """Известный заменяется, неизвестный удаляется."""
+        result = replace_emojis("[e:yoba] и [e:ghost]", self.EMOJI_IDS)
+        assert "<:yoba:1101900451852599427>" in result
+        assert "[e:ghost]" not in result
+
+    def test_no_emoji_unchanged(self) -> None:
+        """Текст без эмодзи-тегов не меняется."""
+        result = replace_emojis("просто текст без тегов", self.EMOJI_IDS)
+        assert result == "просто текст без тегов"
+
+    def test_empty_string(self) -> None:
+        """Пустая строка — пустая строка."""
+        assert replace_emojis("", self.EMOJI_IDS) == ""
+
+    def test_empty_emoji_ids(self) -> None:
+        """Пустой кэш — все теги удаляются."""
+        result = replace_emojis("текст [e:yoba] конец", {})
+        assert "[e:yoba]" not in result
+        assert "текст" in result
+
+    def test_returns_string(self) -> None:
+        """Всегда возвращает строку."""
+        assert isinstance(replace_emojis("тест [e:yoba]", self.EMOJI_IDS), str)
 
 
 # ── strip_emoji ──────────────────────────────────────────────────
