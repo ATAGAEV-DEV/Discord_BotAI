@@ -30,6 +30,12 @@ class DisBot(commands.Bot):
         self.report_msg_limit: int = report_msg_limit
         self.report_time_limit: int = report_time_limit
 
+        self.guild_emoji_ids: dict[int, dict[str, str]] = {}
+
+    def _build_emoji_cache(self, guild: discord.Guild) -> dict[str, str]:
+        """Строит словарь {name: id} из эмодзи гильдии."""
+        return {emoji.name: str(emoji.id) for emoji in guild.emojis}
+
     async def setup_hook(self) -> None:
         """Загрузка расширений (Cogs) при старте бота."""
         await self.load_extension("app.cogs.general")
@@ -47,7 +53,21 @@ class DisBot(commands.Bot):
         await user_descriptions_cache.load_all()
         self.report_generator = ReportGenerator(self)
 
+        for guild in self.guilds:
+            self.guild_emoji_ids[guild.id] = self._build_emoji_cache(guild)
+            print(f"Загружено {len(self.guild_emoji_ids[guild.id])} эмодзи для гильдии {guild.name}")
+
         print("Бот успешно подключился к Discord")
+
+    async def on_guild_emojis_update(
+        self,
+        guild: discord.Guild,
+        before: list[discord.Emoji],
+        after: list[discord.Emoji],
+    ) -> None:
+        """Обновляет кэш эмодзи при изменении эмодзи на сервере."""
+        self.guild_emoji_ids[guild.id] = self._build_emoji_cache(guild)
+        print(f"Обновлён кэш эмодзи для гильдии {guild.name}: {len(after)} эмодзи")
 
     async def on_disconnect(self) -> None:
         """Обработка отключения от Discord."""
