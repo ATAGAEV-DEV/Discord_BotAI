@@ -35,6 +35,7 @@ class ErrorHandler(commands.Cog):
             self._ai_cooldowns[ctx.author.id] = now
 
             server_id = ctx.guild.id if ctx.guild else None
+            emoji_ids = self.bot.guild_emoji_ids.get(server_id, {}) if server_id else {}
 
             async with ctx.typing():
                 response = await handlers.ai_generate(
@@ -42,6 +43,7 @@ class ErrorHandler(commands.Cog):
                     server_id,
                     ctx.author,
                     limit=self.bot.context_limit,
+                    emoji_ids=emoji_ids,
                 )
                 await ctx.send(f"{ctx.author.mention} {response}")
         elif isinstance(error, commands.CommandOnCooldown):
