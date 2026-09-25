@@ -1,14 +1,15 @@
 import asyncio
 
+import discord
 from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
 
 from app.core.ai_config import get_client, get_model
 from app.data import user_descriptions_cache
 from app.services.llama_integration import LlamaIndexManager
 from app.tools.utils import (
-    clean_text,
     count_tokens,
     enrich_users_context,
+    strip_emoji,
     user_prompt,
 )
 
@@ -94,11 +95,11 @@ async def ai_generate(
         )
 
         response_text = completion.choices[0].message.content
-        cleaned_response_text = clean_text(response_text)
+        cleaned_response_text = discord.utils.remove_markdown(response_text)
 
         messages_to_index = [
             {"role": "user", "content": f"[Пользователь: {name}] {text}"},
-            {"role": "assistant", "content": cleaned_response_text},
+            {"role": "assistant", "content": strip_emoji(cleaned_response_text)},
         ]
         # Индексация в фоновом режиме (не блокирует ответ)
         asyncio.create_task(llama_manager.index_messages(server_id, messages_to_index))
