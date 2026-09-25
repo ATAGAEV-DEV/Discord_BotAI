@@ -1,3 +1,4 @@
+import discord
 from discord.ext import commands
 from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
 
@@ -5,7 +6,6 @@ from app.core.ai_config import get_client, get_model
 from app.core.bot import DisBot
 from app.data import user_descriptions_cache
 from app.tools.prompt import ROAST_PERSONAS, ROAST_PROMPT
-from app.tools.utils import clean_text
 
 
 class Toxic(commands.Cog):
@@ -107,7 +107,7 @@ class Toxic(commands.Cog):
                 max_tokens=600,
             )
             response = completion.choices[0].message.content or ""
-            cleaned_response_text = clean_text(response)
+            cleaned_response_text = discord.utils.remove_markdown(response)
             await ctx.send(cleaned_response_text)
 
 
