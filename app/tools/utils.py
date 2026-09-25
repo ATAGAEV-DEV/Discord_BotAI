@@ -8,6 +8,24 @@ from app.tools.prompt import RANK_CONFIG, SYSTEM_PROMPT
 
 ENCODING = tiktoken.encoding_for_model("gpt-4o-mini")
 
+_EMOJI_TAG_RE = re.compile(r"\[e:(\w+)\]")
+
+
+
+def replace_emojis(text: str, emoji_ids: dict[str, str]) -> str:
+    """Заменяет теги [e:name] на Discord-эмодзи <:name:id>.
+
+    Если эмодзи с таким именем не найден в emoji_ids — тег удаляется.
+    """
+    def _replace(match: re.Match) -> str:
+        name = match.group(1)
+        emoji_id = emoji_ids.get(name)
+        if emoji_id:
+            return f"<:{name}:{emoji_id}>"
+        return ""
+
+    return _EMOJI_TAG_RE.sub(_replace, text)
+
 
 def user_prompt(name: str) -> str:
     """Формирует системный промпт для пользователя.
