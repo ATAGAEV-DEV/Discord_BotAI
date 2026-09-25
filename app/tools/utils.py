@@ -74,10 +74,34 @@ def count_tokens(text: str | None) -> int:
     return len(ENCODING.encode(text))
 
 
-def clean_text(text: str) -> str:
-    """Очищает текст от markdown-стилей: **, *, ###, ##, #."""
-    cleaned_text = re.sub(r"(\*\*|\*|###|##|#)", "", text)
-    return cleaned_text
+def strip_emoji(text: str) -> str:
+    """Удаляет все Unicode-эмодзи и кастомные Discord-эмодзи из текста для индексации в ChromaDB.
+
+    Используется перед сохранением в векторное хранилище, чтобы
+    модель не обучалась на примерах ответов с эмодзи.
+    """
+    # Кастомные Discord-эмодзи: <:name:id> и <a:name:id> (анимированные)
+    text = re.sub(r"<a?:\w+:\d+>", "", text)
+
+    # Диапазоны Unicode-блоков эмодзи
+    emoji_pattern = re.compile(
+        "["
+        "\U0001F600-\U0001F64F"  # emoticons
+        "\U0001F300-\U0001F5FF"  # symbols & pictographs
+        "\U0001F680-\U0001F6FF"  # transport & map
+        "\U0001F1E0-\U0001F1FF"  # flags
+        "\U00002600-\U000027BF"  # misc symbols
+        "\U0001F900-\U0001F9FF"  # supplemental symbols
+        "\U00002700-\U000027BF"  # dingbats
+        "\U0001FA00-\U0001FA6F"  # chess, etc.
+        "\U0001FA70-\U0001FAFF"  # food, etc.
+        "\U00002500-\U00002BEF"  # box drawing, arrows
+        "\U0000FE00-\U0000FE0F"  # variation selectors
+        "\U0001F004-\U0001F0CF"  # mahjong, playing cards
+        "]+",
+        flags=re.UNICODE,
+    )
+    return emoji_pattern.sub("", text).strip()
 
 
 COLOR_MAP: dict[str, discord.Color] = {
