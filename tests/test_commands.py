@@ -125,12 +125,11 @@ async def test_rank_command_list(
 async def test_rank_command_error(
     mock_get_rank: AsyncMock, general_cog: General, mock_ctx: AsyncMock
 ) -> None:
-    """Обработка ошибки в !rank."""
+    """При не-ValueError исключении в !rank — оно пробрасывается наружу."""
     mock_get_rank.side_effect = Exception("DB Error")
 
-    await general_cog.rank_command.callback(general_cog, mock_ctx)
-
-    mock_ctx.send.assert_called_with("Произошла ошибка при получении статистики: DB Error")
+    with pytest.raises(Exception, match="DB Error"):
+        await general_cog.rank_command.callback(general_cog, mock_ctx)
 
 
 # ── reset_command ───────────────────────────────────────────────

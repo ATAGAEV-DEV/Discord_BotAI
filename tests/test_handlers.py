@@ -59,8 +59,8 @@ class TestClearServerHistory:
     @pytest.mark.asyncio
     @patch("app.core.handlers.llama_manager")
     async def test_exception_handling(self, mock_llama: MagicMock) -> None:
-        """При ошибке — сообщение об ошибке."""
+        """При ошибке — исключение пробрасывается наружу."""
         mock_llama.get_server_collection.side_effect = Exception("DB Error")
 
-        result = await clear_server_history(12345)
-        assert "ошибка" in result.lower()
+        with pytest.raises(Exception, match="DB Error"):
+            await clear_server_history(12345)

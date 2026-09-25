@@ -4,12 +4,12 @@ import pytest
 
 from app.tools.prompt import RANK_NAMES
 from app.tools.utils import (
-    clean_text,
     contains_only_urls,
     count_tokens,
     darken_color,
     enrich_users_context,
     get_rank_description,
+    strip_emoji,
     user_prompt,
 )
 
@@ -235,26 +235,75 @@ class TestEnrichUsersContext:
         assert enrich_users_context([], {}) == []
 
 
+# ── strip_emoji ──────────────────────────────────────────────────
 
-# ── clean_text ──────────────────────────────────────────────────
 
+class TestStripEmoji:
+    """Тесты для функции strip_emoji."""
 
-class TestCleanText:
-    """Тесты для функции clean_text."""
+    def test_removes_emoticons(self) -> None:
+        """Удаляет базовые эмодзи-смайлики."""
+        result = strip_emoji("Привет 😂 как дела")
+        assert "😂" not in result
+        assert "Привет" in result
+        assert "как дела" in result
 
-    def test_removes_bold(self) -> None:
-        """Удаляет **жирный** markdown."""
-        result = clean_text("**Жирный** текст")
-        assert "**" not in result
-        assert "Жирный" in result
+    def test_removes_symbols(self) -> None:
+        """Удаляет символьные эмодзи (огонь, звёзды и т.п.)."""
+        result = strip_emoji("это 🔥 круто 🎉")
+        assert "🔥" not in result
+        assert "🎉" not in result
+        assert "это" in result
+        assert "круто" in result
 
-    def test_removes_headers(self) -> None:
-        """Удаляет заголовки #, ##, ###."""
-        result = clean_text("### Заголовок")
-        assert "#" not in result
-        assert "Заголовок" in result
+    def test_removes_flags(self) -> None:
+        """Удаляет флаги-эмодзи."""
+        result = strip_emoji("Россия 🇷🇺 топ")
+        assert "🇷🇺" not in result
+        assert "Россия" in result
 
     def test_plain_text_unchanged(self) -> None:
-        """Обычный текст не меняется."""
-        result = clean_text("обычный текст")
-        assert result == "обычный текст"
+        """Обычный текст без эмодзи не меняется."""
+        result = strip_emoji("просто текст без эмодзи")
+        assert result == "просто текст без эмодзи"
+
+    def test_multiple_emoji_in_row(self) -> None:
+        """Несколько эмодзи подряд удаляются."""
+        result = strip_emoji("😂😂😂 lol")
+        assert "😂" not in result
+        assert "lol" in result
+
+    def test_empty_string(self) -> None:
+        """Пустая строка — пустая строка."""
+        assert strip_emoji("") == ""
+
+    def test_only_emoji(self) -> None:
+        """Строка только из эмодзи возвращает пустую строку."""
+        result = strip_emoji("😂🔥🎉")
+        assert result == ""
+
+    def test_returns_string(self) -> None:
+        """Всегда возвращает строку."""
+        assert isinstance(strip_emoji("тест 🔥"), str)
+
+    def test_removes_custom_discord_emoji(self) -> None:
+        """Удаляет кастомные статичные Discord-эмодзи <:name:id>."""
+        result = strip_emoji("привет <:pepe:123456789> пока")
+        assert "<:pepe:123456789>" not in result
+        assert "привет" in result
+        assert "пока" in result
+
+    def test_removes_animated_discord_emoji(self) -> None:
+        """Удаляет анимированные Discord-эмодзи <a:name:id>."""
+        result = strip_emoji("ого <a:dance:987654321> вот это да")
+        assert "<a:dance:987654321>" not in result
+        assert "ого" in result
+        assert "вот это да" in result
+
+    def test_removes_mixed_emoji(self) -> None:
+        """Удаляет и Unicode-эмодзи, и кастомные Discord-эмодзи одновременно."""
+        result = strip_emoji("текст 😂 и <:kek:111> конец")
+        assert "😂" not in result
+        assert "<:kek:111>" not in result
+        assert "текст" in result
+        assert "конец" in result
