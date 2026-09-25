@@ -9,6 +9,7 @@ from app.services.llama_integration import LlamaIndexManager
 from app.tools.utils import (
     count_tokens,
     enrich_users_context,
+    replace_emojis,
     strip_emoji,
     user_prompt,
 )
@@ -50,6 +51,7 @@ async def ai_generate(
     server_id: int,
     name: str,
     limit: int = 15,
+    emoji_ids: dict[str, str] | None = None,
 ) -> str:
     """Генерирует ответ от AI с глобальным таймаутом."""
 
@@ -96,12 +98,12 @@ async def ai_generate(
 
         response_text = completion.choices[0].message.content
         cleaned_response_text = discord.utils.remove_markdown(response_text)
+        cleaned_response_text = replace_emojis(cleaned_response_text, emoji_ids or {})
 
         messages_to_index = [
             {"role": "user", "content": f"[Пользователь: {name}] {text}"},
             {"role": "assistant", "content": strip_emoji(cleaned_response_text)},
         ]
-        # Индексация в фоновом режиме (не блокирует ответ)
         asyncio.create_task(llama_manager.index_messages(server_id, messages_to_index))
         print(f"Сообщения {messages}")
         print(count_tokens(messages))
