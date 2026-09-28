@@ -1,6 +1,9 @@
 import os
 
+from dotenv import load_dotenv
 from openai import AsyncOpenAI
+
+load_dotenv()
 
 PROVIDERS: dict[str, dict[str, str]] = {
     "proxyapi": {
@@ -14,6 +17,10 @@ PROVIDERS: dict[str, dict[str, str]] = {
     "polza": {
         "token_env": "AI_TOKEN_POLZA",
         "base_url": "https://api.polza.ai/api/v1",
+    },
+    "vibecode": {
+        "token_env": "AI_TOKEN_VIBECODE",
+        "base_url": "https://api.vibecode-claude.online/v1",
     },
 }
 
@@ -34,6 +41,17 @@ def get_provider_config(name: str | None = None) -> dict[str, str]:
     return {
         "api_key": os.getenv(config["token_env"], ""),
         "base_url": config["base_url"],
+    }
+
+
+def get_embedding_config(provider: str | None = None) -> dict[str, str]:
+    """Возвращает отдельный конфиг провайдера и модели embeddings."""
+    provider_name = provider or os.getenv("AI_EMBEDDING_PROVIDER", "polza")
+    config = get_provider_config(provider_name)
+    return {
+        "api_key": config["api_key"],
+        "base_url": config["base_url"],
+        "model": os.getenv("AI_EMBEDDING_MODEL", "text-embedding-3-large"),
     }
 
 
