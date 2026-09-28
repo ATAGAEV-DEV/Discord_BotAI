@@ -9,6 +9,7 @@ from discord.ext import commands
 from app.cogs.admin import Admin
 from app.cogs.error_handler import ErrorHandler
 from app.cogs.general import General
+from app.cogs.nicknames import Nicknames
 from app.cogs.youtube import YouTube
 from app.core.bot import DisBot
 
@@ -64,6 +65,12 @@ def youtube_cog(mock_bot: MagicMock) -> YouTube:
 def error_cog(mock_bot: MagicMock) -> ErrorHandler:
     """Фикстура для ErrorHandler Cog."""
     return ErrorHandler(mock_bot)
+
+
+@pytest.fixture
+def nicknames_cog(mock_bot: MagicMock) -> Nicknames:
+    """Фикстура для Nicknames Cog."""
+    return Nicknames(mock_bot)
 
 
 # ── help_command ────────────────────────────────────────────────
@@ -249,6 +256,43 @@ async def test_youtube_toggle_command(youtube_cog: YouTube, mock_ctx: AsyncMock)
 
     youtube_cog.youtube_notifier.toggle_channel.assert_called_once_with("MyChannel", 67890, False)
     assert "отключено" in mock_ctx.send.call_args[0][0]
+
+
+# ── emoji_description_commands ──────────────────────────────────
+
+
+@pytest.mark.asyncio
+@patch("app.cogs.nicknames.emoji_descriptions_cache.save", new_callable=AsyncMock)
+async def test_emoji_add_command(
+    mock_save: AsyncMock, nicknames_cog: Nicknames, mock_ctx: AsyncMock
+) -> None:
+    """!emoji_add сохраняет описание эмодзи текущего сервера."""
+    mock_save.return_value = "Описание эмодзи 'yoba' успешно добавлено!"
+
+    await nicknames_cog.emoji_add_command.callback(
+        nicknames_cog, mock_ctx, name="yoba", description="издевательство"
+    )
+
+    mock_save.assert_awaited_once_with(
+        name="yoba", description="издевательство", guild_id=67890
+    )
+    mock_ctx.send.assert_awaited_once_with(
+        "✅ Описание эмодзи 'yoba' успешно добавлено!"
+    )
+
+
+@pytest.mark.asyncio
+@patch("app.cogs.nicknames.emoji_descriptions_cache.get")
+async def test_emoji_list_command(
+    mock_get: MagicMock, nicknames_cog: Nicknames, mock_ctx: AsyncMock
+) -> None:
+    """!emoji_list показывает только описания текущего сервера."""
+    mock_get.return_value = {"yoba": "издевательство"}
+
+    await nicknames_cog.emoji_list_command.callback(nicknames_cog, mock_ctx)
+
+    mock_get.assert_called_once_with(67890)
+    assert "[e:yoba]" in mock_ctx.send.call_args.args[0]
 
 
 # ── on_command_error ────────────────────────────────────────────
