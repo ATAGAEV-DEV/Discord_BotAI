@@ -2,7 +2,7 @@ from discord.ext import commands
 
 from app.core.bot import DisBot
 from app.core.checks import admin_or_owner
-from app.data import user_descriptions_cache
+from app.data import emoji_descriptions_cache, user_descriptions_cache
 
 
 class Nicknames(commands.Cog):
@@ -73,6 +73,52 @@ class Nicknames(commands.Cog):
         await ctx.send(
             f"🔄 Кэш описаний перезагружен! Загружено {count} описаний для этого сервера."
         )
+
+    @commands.command(name="emoji_add")
+    @commands.guild_only()
+    @admin_or_owner()
+    async def emoji_add_command(
+        self, ctx: commands.Context, name: str, *, description: str
+    ) -> None:
+        """Добавить или обновить описание эмодзи сервера.
+
+        Использование: !emoji_add имя Описание эмодзи
+        """
+        result = await emoji_descriptions_cache.save(
+            name=name,
+            description=description,
+            guild_id=ctx.guild.id,
+        )
+        await ctx.send(f"✅ {result}")
+
+    @commands.command(name="emoji_remove")
+    @commands.guild_only()
+    @admin_or_owner()
+    async def emoji_remove_command(self, ctx: commands.Context, name: str) -> None:
+        """Удалить описание эмодзи сервера."""
+        result = await emoji_descriptions_cache.remove(name=name, guild_id=ctx.guild.id)
+        await ctx.send(f"✅ {result}")
+
+    @commands.command(name="emoji_list")
+    @commands.guild_only()
+    async def emoji_list_command(self, ctx: commands.Context) -> None:
+        """Показать описания эмодзи текущего сервера."""
+        descriptions = emoji_descriptions_cache.get(ctx.guild.id)
+        if not descriptions:
+            await ctx.send("📭 Описания эмодзи не найдены.")
+            return
+
+        lines = [f"**[e:{name}]** — {desc}" for name, desc in descriptions.items()]
+        await ctx.send("📋 **Описания эмодзи:**\n" + "\n".join(lines))
+
+    @commands.command(name="emoji_reload")
+    @commands.guild_only()
+    @admin_or_owner()
+    async def emoji_reload_command(self, ctx: commands.Context) -> None:
+        """Перезагрузить кэш описаний эмодзи из БД."""
+        await emoji_descriptions_cache.load_all()
+        count = len(emoji_descriptions_cache.get(ctx.guild.id))
+        await ctx.send(f"🔄 Кэш эмодзи перезагружен! Загружено {count} описаний.")
 
 
 async def setup(bot: DisBot) -> None:
