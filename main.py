@@ -3,7 +3,9 @@ import os
 import discord
 from dotenv import load_dotenv
 
-from app.core.bot import DisBot
+load_dotenv()
+
+from app.core.bot import DisBot  # noqa: E402
 
 # Лимиты
 CONTEXT_LIMIT = 100  # Количество строк контекста для RAG
@@ -13,8 +15,6 @@ REPORT_TIME_LIMIT = 60  # Время ожидания в минутах для �
 
 def main() -> None:
     """Запуск бота."""
-    load_dotenv()
-
     token = os.getenv("DC_TOKEN")
     if not token:
         print("Ошибка: DC_TOKEN не найден в переменных окружения!")
