@@ -7,7 +7,7 @@ from llama_index.core.node_parser import SimpleNodeParser
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
-from app.core.ai_config import get_client, get_provider_config
+from app.core.ai_config import get_client, get_embedding_config
 
 QUERY_TIMEOUT = 30.0
 INDEX_TIMEOUT = 25.0
@@ -23,11 +23,11 @@ class LlamaIndexManager:
         """Инициализирует менеджер LlamaIndex."""
         self.custom_client = get_client()
 
-        config = get_provider_config()
+        embedding_config = get_embedding_config()
         self.embed_model = OpenAIEmbedding(
-            api_key=config["api_key"],
-            api_base=config["base_url"],
-            model="text-embedding-3-large",
+            api_key=embedding_config["api_key"],
+            api_base=embedding_config["base_url"],
+            model=embedding_config["model"],
         )
 
         self.node_parser = SimpleNodeParser.from_defaults(chunk_size=128, chunk_overlap=16)
