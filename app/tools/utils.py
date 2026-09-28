@@ -3,8 +3,8 @@ import re
 import discord
 import tiktoken
 
-from app.data import user_descriptions_cache
-from app.tools.prompt import RANK_CONFIG, SYSTEM_PROMPT
+from app.data import emoji_descriptions_cache, user_descriptions_cache
+from app.tools.prompt import EMOJI_LIST_STRING, EMOJIS, RANK_CONFIG, SYSTEM_PROMPT
 
 ENCODING = tiktoken.encoding_for_model("gpt-4o-mini")
 
@@ -27,23 +27,47 @@ def replace_emojis(text: str, emoji_ids: dict[str, str]) -> str:
     return _EMOJI_TAG_RE.sub(_replace, text)
 
 
-def user_prompt(name: str) -> str:
-    """Формирует системный промпт для пользователя.
+def user_prompt(name: str, guild_id: int | None = None) -> str:
+    """Формирует системный prompt с данными текущего сервера.
 
-    Если имя совпадает с ключами из кэша описаний пользователей.
+    ``guild_id`` необязателен для обратной совместимости со старыми вызовами.
+    В рабочем Discord-потоке он передаётся всегда, чтобы данные разных серверов
+    не смешивались.
     """
     descriptions = user_descriptions_cache.get_all()
+    emoji_descriptions = (
+        emoji_descriptions_cache.get(guild_id) if guild_id is not None else {}
+    )
+
+    # EMOJIS намеренно остаётся в prompt.py как fallback и источник для переноса
+    # исходных описаний в БД.
+    configured_emojis = {**EMOJIS, **emoji_descriptions}
+    emoji_list = (
+        "\n".join(
+            f"[e:{emoji_name}] — {description}"
+            for emoji_name, description in configured_emojis.items()
+        )
+        if configured_emojis
+        else EMOJI_LIST_STRING
+    )
+
     if str(name).strip() in descriptions:
         user_info = (
             "Информация по пользователям с name (они должны совпадать побуквенно, "
             "иначе это другой юзер). Но не упоминать об этом постоянно:"
+            f"\n- {name}: {descriptions[name]}"
         )
-        user_info += f"\n- {name}: {descriptions[name]}"
-        prompt = SYSTEM_PROMPT.format(user_info=user_info).strip()
-        return prompt
-    else:
-        cleaned_prompt = re.sub(r"\n\s*5\..*", "", SYSTEM_PROMPT.strip())
-        return cleaned_prompt
+        user_prompt_text = SYSTEM_PROMPT.format(
+            user_info=user_info,
+            emoji_list=emoji_list,
+        ).strip()
+        return user_prompt_text
+
+    return re.sub(
+        r"\n\s*5\..*",
+        "",
+        SYSTEM_PROMPT.format(user_info="", emoji_list=emoji_list).strip(),
+    )
 
 
 def enrich_users_context(contexts: list[str], user_descriptions: dict) -> list[str]:
