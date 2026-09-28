@@ -117,9 +117,11 @@
 | :--- | :--- | :--- |
 | **Core** | `DC_TOKEN` | Токен бота из [Discord Developer Portal](https://discord.com/developers/applications). |
 | | `DATABASE_URL` | URL PostgreSQL (формат: `postgresql+asyncpg://user:pass@host:port/db`). |
-| **AI** | `AI_PROVIDER` | Активный провайдер: `aitunnel` или `polza`. |
-| | `AI_MODEL` | Модель ИИ (например, `claude-haiku-4.5` или `gpt-4o-mini`). |
-| | `AI_MODEL_MINI` | "Младшая" модель для простых задач (по умолчанию `gpt-5-mini`). |
+| **AI** | `AI_PROVIDER` | Провайдер для chat-запросов: `aitunnel`, `proxyapi`, `polza` или `vibecode`. |
+| | `AI_MODEL` | Chat-модель (например, `claude-haiku-4.5` или `gpt-4o-mini`). |
+| | `AI_MODEL_MINI` | "Младшая" chat-модель для простых задач. |
+| | `AI_EMBEDDING_PROVIDER` | Отдельный провайдер для embeddings (по умолчанию `polza`). |
+| | `AI_EMBEDDING_MODEL` | Модель embeddings (по умолчанию `text-embedding-3-large`). |
 | | `AI_TOKEN1` | Ключ доступа для выбранного AI провайдера. |
 | **Services** | `YT_API_KEY` | (Опционально) Ключ YouTube API для поиска видео. |
 
