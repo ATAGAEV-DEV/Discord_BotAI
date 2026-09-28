@@ -204,6 +204,40 @@ class TestUserPrompt:
         assert isinstance(user_prompt("atagaev"), str)
         assert isinstance(user_prompt("unknown"), str)
 
+    def test_guild_emoji_description_overrides_fallback(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Описание эмодзи из БД сервера заменяет одноимённый fallback."""
+        from app.data import emoji_descriptions_cache, user_descriptions_cache
+
+        monkeypatch.setattr(user_descriptions_cache, "_cache", {})
+        monkeypatch.setattr(
+            emoji_descriptions_cache, "_cache", {123: {"yoba": "локальное описание"}}
+        )
+
+        result = user_prompt("unknown", guild_id=123)
+
+        assert "[e:yoba] — локальное описание" in result
+        assert "[e:Gachi1] — смех" in result
+
+    def test_guild_emoji_descriptions_are_isolated(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Описание эмодзи другого сервера не попадает в prompt."""
+        from app.data import emoji_descriptions_cache, user_descriptions_cache
+
+        monkeypatch.setattr(user_descriptions_cache, "_cache", {})
+        monkeypatch.setattr(
+            emoji_descriptions_cache,
+            "_cache",
+            {123: {"yoba": "сервер один"}, 456: {"yoba": "сервер два"}},
+        )
+
+        result = user_prompt("unknown", guild_id=123)
+
+        assert "сервер один" in result
+        assert "сервер два" not in result
+
 
 # ── enrich_users_context ────────────────────────────────────────
 
