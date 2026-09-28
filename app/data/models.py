@@ -228,6 +228,23 @@ class YouTubeVideo(Base):
     __table_args__ = (UniqueConstraint("video_id", "guild_id", name="uq_youtube_video_per_guild"),)
 
 
+class GuildEmoji(Base):
+    """Модель описания кастомного эмодзи для конкретного сервера."""
+
+    __tablename__ = "guild_emojis"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(32), nullable=False)
+    description = Column(Text, nullable=False)
+    guild_id = Column(BigInteger, nullable=False)
+    datetime_insert = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("name", "guild_id", name="uq_guild_emoji_per_guild"),
+        Index("idx_guild_emoji_guild", "guild_id"),
+    )
+
+
 class UserDescription(Base):
     """Модель описания пользователя Discord.
 
