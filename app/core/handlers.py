@@ -57,7 +57,7 @@ async def ai_generate(
 
     async def _generate_inner() -> str:
         """Внутренняя функция генерации (без таймаута)."""
-        messages = [{"role": "system", "content": user_prompt(f"{name}")}]
+        messages = [{"role": "system", "content": user_prompt(f"{name}", server_id)}]
         relevant_contexts = await llama_manager.query_relevant_context(server_id, text, limit=limit)
         descriptions = user_descriptions_cache.get_all()
         relevant_contexts = enrich_users_context(relevant_contexts, descriptions)
