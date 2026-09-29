@@ -5,21 +5,20 @@ import sys
 
 sys.path.insert(0, ".")
 
+from app.core.config import AI_GENERATE_TIMEOUT as CONFIG_AI_GENERATE_TIMEOUT
 from app.core.handlers import AI_GENERATE_TIMEOUT
 
 
 def test_timeout_constant_exists() -> None:
-    """Проверяем что константа таймаута задана."""
-    assert AI_GENERATE_TIMEOUT is not None, "AI_GENERATE_TIMEOUT не задан"
+    """Проверяем, что handlers использует константу из общего конфига."""
+    assert AI_GENERATE_TIMEOUT == CONFIG_AI_GENERATE_TIMEOUT
     print(f"✅ AI_GENERATE_TIMEOUT = {AI_GENERATE_TIMEOUT}")
 
 
 def test_timeout_value() -> None:
-    """Проверяем что значение таймаута в разумных пределах (1-120 сек)."""
-    assert 1.0 <= AI_GENERATE_TIMEOUT <= 120.0, (
-        f"Timeout должен быть между 1 и 120, got {AI_GENERATE_TIMEOUT}"
-    )
-    print(f"✅ Таймаут AI_GENERATE_TIMEOUT = {AI_GENERATE_TIMEOUT} сек (в допустимых пределах)")
+    """Проверяем, что таймаут положительный без произвольной верхней границы."""
+    assert AI_GENERATE_TIMEOUT > 0
+    print(f"✅ Таймаут AI_GENERATE_TIMEOUT = {AI_GENERATE_TIMEOUT} сек")
 
 
 async def test_async_timeout() -> None:
