@@ -4,6 +4,7 @@ import discord
 from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
 
 from app.core.ai_config import get_client, get_model
+from app.core.config import AI_GENERATE_TIMEOUT
 from app.data import user_descriptions_cache
 from app.services.llama_integration import LlamaIndexManager
 from app.tools.utils import (
@@ -15,8 +16,6 @@ from app.tools.utils import (
 )
 
 llama_manager = LlamaIndexManager()
-
-AI_GENERATE_TIMEOUT = 100.0
 
 
 async def clear_server_history(server_id: int) -> str | None:
@@ -93,7 +92,7 @@ async def ai_generate(
             frequency_penalty=0.1,
             presence_penalty=0.2,
             max_tokens=4500,
-            timeout=60.0,
+            timeout=AI_GENERATE_TIMEOUT,
         )
 
         response_text = completion.choices[0].message.content
