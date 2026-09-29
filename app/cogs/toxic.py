@@ -101,7 +101,7 @@ class Toxic(commands.Cog):
                 model=get_model(),
                 messages=msgs,
                 temperature=0.9,
-                max_tokens=600,
+                max_tokens=3000,
             )
             response = completion.choices[0].message.content or ""
             cleaned_response_text = discord.utils.remove_markdown(response)
