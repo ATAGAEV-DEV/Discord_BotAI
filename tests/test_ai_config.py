@@ -73,7 +73,7 @@ class TestAISettings:
         assert get_ai_settings() == AISettings(
             provider="polza",
             model="openai/gpt-6-luna",
-            mini_model="gpt-4o-mini",
+            mini_model="openai/gpt-6-luna",
             embedding_provider="polza",
             embedding_model="text-embedding-3-large",
         )
@@ -243,9 +243,9 @@ class TestGetMiniModel:
     """Тесты для get_mini_model."""
 
     def test_default_mini_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Модель по умолчанию — 'gpt-4o-mini'."""
+        """Модель по умолчанию — 'openai/gpt-6-luna'."""
         monkeypatch.delenv("AI_MODEL_MINI", raising=False)
-        assert ai_config.get_mini_model() == "gpt-4o-mini"
+        assert ai_config.get_mini_model() == "openai/gpt-6-luna"
 
     def test_env_var_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Можно переопределить через переменную окружения."""
