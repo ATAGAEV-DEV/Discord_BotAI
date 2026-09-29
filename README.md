@@ -141,6 +141,12 @@
 
 Перед запуском вы можете настроить поведение бота под свой сервер.
 
+Префикс команд (`COMMAND_PREFIX = "!"`), таймзона планировщика и логов YouTube
+(`BOT_TIMEZONE = "Europe/Moscow"`) и интервал проверки новых видео в минутах
+(`YOUTUBE_CHECK_INTERVAL_MINUTES = 5`) задаются в `app/core/config.py`, а не в `.env`.
+Префикс не должен быть пустым, таймзона должна существовать в `pytz`, а интервал —
+быть положительным целым числом. Примеры команд в README используют префикс `!`.
+
 #### 1. Настройка лимитов ([main.py](https://github.com/ATAGAEV95/Discord_BotAI/blob/main/main.py))
 Откройте файл [main.py](https://github.com/ATAGAEV95/Discord_BotAI/blob/main/main.py) и найдите блок настроек:
 
