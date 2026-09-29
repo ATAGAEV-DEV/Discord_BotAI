@@ -1,31 +1,12 @@
 import os
 
-from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
-load_dotenv()
+from app.core.config import PROVIDERS, get_ai_settings
 
-PROVIDERS: dict[str, dict[str, str]] = {
-    "proxyapi": {
-        "token_env": "AI_TOKEN",
-        "base_url": "https://api.proxyapi.ru/openai/v1",
-    },
-    "aitunnel": {
-        "token_env": "AI_TOKEN1",
-        "base_url": "https://api.aitunnel.ru/v1/",
-    },
-    "polza": {
-        "token_env": "AI_TOKEN_POLZA",
-        "base_url": "https://api.polza.ai/api/v1",
-    },
-    "vibecode": {
-        "token_env": "AI_TOKEN_VIBECODE",
-        "base_url": "https://api.vibecode-claude.online/v1",
-    },
-}
-
-_active_provider: str = os.getenv("AI_PROVIDER", "polza")
-_active_model: str = os.getenv("AI_MODEL", "openai/gpt-6-luna")
+_initial_settings = get_ai_settings()
+_active_provider: str = _initial_settings.provider
+_active_model: str = _initial_settings.model
 _cached_client: AsyncOpenAI | None = None
 _cached_provider_name: str | None = None
 
@@ -46,12 +27,13 @@ def get_provider_config(name: str | None = None) -> dict[str, str]:
 
 def get_embedding_config(provider: str | None = None) -> dict[str, str]:
     """Возвращает отдельный конфиг провайдера и модели embeddings."""
-    provider_name = provider or os.getenv("AI_EMBEDDING_PROVIDER", "polza")
+    settings = get_ai_settings()
+    provider_name = provider or settings.embedding_provider
     config = get_provider_config(provider_name)
     return {
         "api_key": config["api_key"],
         "base_url": config["base_url"],
-        "model": os.getenv("AI_EMBEDDING_MODEL", "text-embedding-3-large"),
+        "model": settings.embedding_model,
     }
 
 
@@ -113,7 +95,7 @@ def set_model(model: str) -> None:
 
 def get_mini_model() -> str:
     """Возвращает текущую мини-модель (для простых задач)."""
-    return os.getenv("AI_MODEL_MINI", "gpt-4o-mini")
+    return get_ai_settings().mini_model
 
 
 def next_provider() -> str:
