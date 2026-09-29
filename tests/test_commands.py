@@ -12,6 +12,7 @@ from app.cogs.general import General
 from app.cogs.nicknames import Nicknames
 from app.cogs.youtube import YouTube
 from app.core.bot import DisBot
+from app.core.embeds import create_help_embed
 
 
 @pytest.fixture
@@ -87,7 +88,31 @@ async def test_help_command(
 
     await general_cog.help_command.callback(general_cog, mock_ctx)
 
+    mock_create_help.assert_called_once_with("!")
     mock_ctx.send.assert_called_once_with(embed=mock_embed)
+
+
+@pytest.mark.asyncio
+@patch("app.cogs.general.em.create_help_embed")
+async def test_help_uses_custom_prefix(
+    mock_create_help: MagicMock, general_cog: General, mock_ctx: AsyncMock
+) -> None:
+    """Справка получает фактический префикс бота."""
+    general_cog.bot.command_prefix = "~"
+
+    await general_cog.help_command.callback(general_cog, mock_ctx)
+
+    mock_create_help.assert_called_once_with("~")
+
+
+def test_help_embed_contains_current_prefix() -> None:
+    """Примеры команд в справке используют переданный префикс."""
+    embed = create_help_embed("~")
+
+    assert "`~help`" in embed.fields[0].value
+    assert "`~youtube" in embed.fields[1].value
+    assert "`~admin_add" in embed.fields[-1].value
+    assert all("`!" not in field.value for field in embed.fields)
 
 
 # ── rank_command ────────────────────────────────────────────────
@@ -256,6 +281,20 @@ async def test_youtube_toggle_command(youtube_cog: YouTube, mock_ctx: AsyncMock)
 
     youtube_cog.youtube_notifier.toggle_channel.assert_called_once_with("MyChannel", 67890, False)
     assert "отключено" in mock_ctx.send.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_youtube_invalid_action_uses_current_prefix(
+    youtube_cog: YouTube, mock_ctx: AsyncMock
+) -> None:
+    """При ошибке в аргументах подсказка использует фактический префикс."""
+    youtube_cog.bot.command_prefix = "~"
+
+    await youtube_cog.youtube_toggle_command.callback(
+        youtube_cog, mock_ctx, action="invalid", name="MyChannel"
+    )
+
+    mock_ctx.send.assert_awaited_once_with("❌ Используйте: `~youtube on/off название_канала`")
 
 
 # ── bot_admin_commands ──────────────────────────────────────────
