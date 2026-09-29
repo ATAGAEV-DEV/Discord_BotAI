@@ -16,7 +16,7 @@ class General(commands.Cog):
     @commands.command(name="help")
     async def help_command(self, ctx: commands.Context) -> None:
         """Показать список команд."""
-        embed = em.create_help_embed()
+        embed = em.create_help_embed(self.bot.command_prefix)
         await ctx.send(embed=embed)
 
     @commands.command(name="rank")
