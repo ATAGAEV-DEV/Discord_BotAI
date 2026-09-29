@@ -15,6 +15,8 @@ from app.core.ai_config import (
     set_active_provider,
     set_model,
 )
+from app.core.config import PROVIDERS as CONFIG_PROVIDERS
+from app.core.config import AISettings, get_ai_settings
 
 
 @pytest.fixture(autouse=True)
@@ -48,6 +50,73 @@ class TestGetProviderConfig:
         """Ошибка при неизвестном провайдере."""
         with pytest.raises(ValueError, match="Неизвестный провайдер"):
             get_provider_config("nonexistent")
+
+    def test_registry_is_shared_with_config(self) -> None:
+        """Старый импорт PROVIDERS продолжает работать после переноса реестра."""
+        assert PROVIDERS is CONFIG_PROVIDERS
+
+
+class TestAISettings:
+    """Тесты для общих AI-настроек."""
+
+    def test_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """При отсутствии переменных используются прежние значения по умолчанию."""
+        for name in (
+            "AI_PROVIDER",
+            "AI_MODEL",
+            "AI_MODEL_MINI",
+            "AI_EMBEDDING_PROVIDER",
+            "AI_EMBEDDING_MODEL",
+        ):
+            monkeypatch.delenv(name, raising=False)
+
+        assert get_ai_settings() == AISettings(
+            provider="polza",
+            model="openai/gpt-6-luna",
+            mini_model="gpt-4o-mini",
+            embedding_provider="polza",
+            embedding_model="text-embedding-3-large",
+        )
+
+    def test_env_overrides(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Все настройки переопределяются переменными окружения."""
+        monkeypatch.setenv("AI_PROVIDER", "aitunnel")
+        monkeypatch.setenv("AI_MODEL", "custom-chat")
+        monkeypatch.setenv("AI_MODEL_MINI", "custom-mini")
+        monkeypatch.setenv("AI_EMBEDDING_PROVIDER", "proxyapi")
+        monkeypatch.setenv("AI_EMBEDDING_MODEL", "custom-embedding")
+
+        assert get_ai_settings() == AISettings(
+            provider="aitunnel",
+            model="custom-chat",
+            mini_model="custom-mini",
+            embedding_provider="proxyapi",
+            embedding_model="custom-embedding",
+        )
+
+
+class TestGetEmbeddingConfig:
+    """Тесты для конфигурации embeddings."""
+
+    def test_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Embeddings по умолчанию используют polza и прежнюю модель."""
+        monkeypatch.delenv("AI_EMBEDDING_PROVIDER", raising=False)
+        monkeypatch.delenv("AI_EMBEDDING_MODEL", raising=False)
+
+        config = ai_config.get_embedding_config()
+
+        assert config["base_url"] == PROVIDERS["polza"]["base_url"]
+        assert config["model"] == "text-embedding-3-large"
+
+    def test_env_and_explicit_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Настройки окружения читаются при вызове, аргумент важнее провайдера из env."""
+        monkeypatch.setenv("AI_EMBEDDING_PROVIDER", "aitunnel")
+        monkeypatch.setenv("AI_EMBEDDING_MODEL", "custom-embedding")
+
+        assert ai_config.get_embedding_config()["base_url"] == PROVIDERS["aitunnel"]["base_url"]
+        config = ai_config.get_embedding_config("proxyapi")
+        assert config["base_url"] == PROVIDERS["proxyapi"]["base_url"]
+        assert config["model"] == "custom-embedding"
 
 
 # ── set_active_provider / get_active_provider ───────────────────
@@ -173,8 +242,9 @@ class TestGetClient:
 class TestGetMiniModel:
     """Тесты для get_mini_model."""
 
-    def test_default_mini_model(self) -> None:
+    def test_default_mini_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Модель по умолчанию — 'gpt-4o-mini'."""
+        monkeypatch.delenv("AI_MODEL_MINI", raising=False)
         assert ai_config.get_mini_model() == "gpt-4o-mini"
 
     def test_env_var_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
