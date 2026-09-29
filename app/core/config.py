@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass
 
+import pytz
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -8,6 +9,9 @@ load_dotenv()
 AI_GENERATE_TIMEOUT: float = 100.0  # Секунды для генерации ответа и запроса к AI API
 MAX_MESSAGE_LENGTH: int = 1000  # Максимальная длина входящего сообщения для отчетов
 REPORT_IGNORE_PREFIX: str = "?"  # Сообщения с этим префиксом не входят в отчёты
+COMMAND_PREFIX: str = "!"  # Префикс команд Discord-бота
+BOT_TIMEZONE: str = "Europe/Moscow"  # Таймзона планировщика и логов YouTube
+YOUTUBE_CHECK_INTERVAL_MINUTES: int = 5  # Частота проверки новых видео в минутах
 
 PROVIDERS: dict[str, dict[str, str]] = {
     "proxyapi": {
@@ -73,3 +77,32 @@ class DatabaseSettings:
 def get_database_settings() -> DatabaseSettings:
     """Возвращает настройки схемы PostgreSQL из окружения."""
     return DatabaseSettings.from_env()
+
+
+@dataclass(frozen=True, slots=True)
+class SchedulerSettings:
+    """Таймзона и интервал проверки новых видео."""
+
+    timezone: str
+    youtube_check_interval_minutes: int
+
+
+def get_scheduler_settings() -> SchedulerSettings:
+    """Проверяет и возвращает настройки планировщика из общего конфига."""
+    try:
+        pytz.timezone(BOT_TIMEZONE)
+    except pytz.UnknownTimeZoneError as exc:
+        raise ValueError(f"Некорректная таймзона BOT_TIMEZONE: {BOT_TIMEZONE!r}") from exc
+
+    interval = YOUTUBE_CHECK_INTERVAL_MINUTES
+    if isinstance(interval, bool) or not isinstance(interval, int) or interval <= 0:
+        raise ValueError("YOUTUBE_CHECK_INTERVAL_MINUTES должно быть целым числом больше 0")
+
+    return SchedulerSettings(timezone=BOT_TIMEZONE, youtube_check_interval_minutes=interval)
+
+
+def get_command_prefix() -> str:
+    """Возвращает префикс команд из общего конфига, не допуская пустого значения."""
+    if not isinstance(COMMAND_PREFIX, str) or not COMMAND_PREFIX.strip():
+        raise ValueError("COMMAND_PREFIX не может быть пустым")
+    return COMMAND_PREFIX
