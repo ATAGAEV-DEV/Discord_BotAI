@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 
+from app.core.config import MAX_MESSAGE_LENGTH, REPORT_IGNORE_PREFIX
 from app.core.scheduler import start_scheduler
 from app.data import admins, emoji_descriptions_cache, user_descriptions_cache
 from app.data.models import init_models
@@ -84,11 +85,11 @@ class DisBot(commands.Bot):
         if message.author.bot:
             return
 
-        if len(message.content) > 1000:
+        if len(message.content) > MAX_MESSAGE_LENGTH:
             if message.content.startswith(self.command_prefix):
                 await message.channel.send(
                     f"Сообщение слишком длинное: {len(message.content)} символов! "
-                    "Максимальная длина - 1000 символов."
+                    f"Максимальная длина - {MAX_MESSAGE_LENGTH} символов."
                 )
             return
 
@@ -99,7 +100,9 @@ class DisBot(commands.Bot):
             if contains_only_urls(message.content):
                 return
 
-            if self.report_generator is not None and not message.content.startswith("?"):
+            if self.report_generator is not None and (
+                not REPORT_IGNORE_PREFIX or not message.content.startswith(REPORT_IGNORE_PREFIX)
+            ):
                 await self.report_generator.add_message(
                     message.channel.id,
                     message.content,
