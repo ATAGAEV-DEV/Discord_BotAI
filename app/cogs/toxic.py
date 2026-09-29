@@ -53,10 +53,7 @@ class Toxic(commands.Cog):
                 continue
 
             content = msg.content
-            if content and (
-                content.startswith(str(ctx.prefix))
-                or content.startswith(self.bot.command_prefix)
-            ):
+            if content and content.startswith(ctx.prefix):
                 continue
 
             if not content:
