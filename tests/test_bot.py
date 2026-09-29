@@ -82,6 +82,22 @@ async def test_short_command_still_runs(mock_bot: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
+async def test_custom_command_prefix_changes_message_routing(mock_bot: MagicMock) -> None:
+    """Новый префикс вызывает команду, а старый попадает в обычные сообщения."""
+    mock_bot.command_prefix = "~"
+    command = _message("~help")
+
+    await DisBot.on_message(mock_bot, command)
+
+    mock_bot.process_commands.assert_awaited_once_with(command)
+    mock_bot.report_generator.add_message.assert_not_awaited()
+
+    await DisBot.on_message(mock_bot, _message("!help"))
+
+    mock_bot.report_generator.add_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_report_ignore_prefix_skips_message(mock_bot: MagicMock) -> None:
     """Сообщение с настроенным префиксом не включается в отчёт."""
     message = _message(f"{REPORT_IGNORE_PREFIX}скрыть")
