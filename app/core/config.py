@@ -51,3 +51,21 @@ class AISettings:
 def get_ai_settings() -> AISettings:
     """Возвращает AI-настройки с учётом текущего окружения."""
     return AISettings.from_env()
+
+
+@dataclass(frozen=True, slots=True)
+class DatabaseSettings:
+    """Настройки схемы PostgreSQL."""
+
+    schema: str = "discord"
+
+    @classmethod
+    def from_env(cls) -> "DatabaseSettings":
+        """Читает схему из окружения, сохраняя значение по умолчанию."""
+        defaults = cls()
+        return cls(schema=os.getenv("DATABASE_SCHEMA", defaults.schema))
+
+
+def get_database_settings() -> DatabaseSettings:
+    """Возвращает настройки схемы PostgreSQL из окружения."""
+    return DatabaseSettings.from_env()
