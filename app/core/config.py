@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 AI_GENERATE_TIMEOUT: float = 100.0  # Секунды для генерации ответа и запроса к AI API
+MAX_MESSAGE_LENGTH: int = 1000  # Максимальная длина входящего сообщения для отчетов
+REPORT_IGNORE_PREFIX: str = "?"  # Сообщения с этим префиксом не входят в отчёты
 
 PROVIDERS: dict[str, dict[str, str]] = {
     "proxyapi": {
