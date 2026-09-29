@@ -1,7 +1,13 @@
 import discord
 from discord.ext import commands
 
-from app.core.config import MAX_MESSAGE_LENGTH, REPORT_IGNORE_PREFIX
+from app.core.config import (
+    CONTEXT_LIMIT,
+    MAX_MESSAGE_LENGTH,
+    REPORT_IGNORE_PREFIX,
+    REPORT_MSG_LIMIT,
+    REPORT_TIME_LIMIT,
+)
 from app.core.scheduler import start_scheduler
 from app.data import admins, emoji_descriptions_cache, user_descriptions_cache
 from app.data.models import init_models
@@ -17,9 +23,9 @@ class DisBot(commands.Bot):
         self,
         command_prefix: str,
         intents: discord.Intents,
-        context_limit: int = 50,
-        report_msg_limit: int = 15,
-        report_time_limit: int = 60,
+        context_limit: int = CONTEXT_LIMIT,
+        report_msg_limit: int = REPORT_MSG_LIMIT,
+        report_time_limit: int = REPORT_TIME_LIMIT,
         help_command: commands.HelpCommand | None = None,
     ):
         """Инициализация бота."""
