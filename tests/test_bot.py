@@ -1,12 +1,23 @@
 """Тесты обработки входящих сообщений ботом."""
 
+from inspect import signature
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
 
+from app.core import config
 from app.core.bot import DisBot
 from app.core.config import MAX_MESSAGE_LENGTH, REPORT_IGNORE_PREFIX
+
+
+def test_disbot_limit_defaults_match_config() -> None:
+    """Значения по умолчанию конструктора согласованы с общим конфигом."""
+    parameters = signature(DisBot.__init__).parameters
+
+    assert parameters["context_limit"].default == config.CONTEXT_LIMIT
+    assert parameters["report_msg_limit"].default == config.REPORT_MSG_LIMIT
+    assert parameters["report_time_limit"].default == config.REPORT_TIME_LIMIT
 
 
 @pytest.fixture
