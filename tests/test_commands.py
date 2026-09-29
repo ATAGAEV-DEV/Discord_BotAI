@@ -258,6 +258,70 @@ async def test_youtube_toggle_command(youtube_cog: YouTube, mock_ctx: AsyncMock)
     assert "отключено" in mock_ctx.send.call_args[0][0]
 
 
+# ── bot_admin_commands ──────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@patch("app.cogs.admin.admins.add", new_callable=AsyncMock)
+async def test_admin_add_command(mock_add: AsyncMock, admin_cog: Admin, mock_ctx: AsyncMock) -> None:
+    """!admin_add сохраняет администратора текущего сервера."""
+    mock_add.return_value = "✅ администратор добавлен"
+
+    await admin_cog.admin_add_command.callback(
+        admin_cog, mock_ctx, name="atagaev", user_id=123456789
+    )
+
+    mock_add.assert_awaited_once_with(
+        guild_id=67890,
+        user_id=123456789,
+        username="atagaev",
+    )
+    mock_ctx.send.assert_awaited_once_with("✅ администратор добавлен")
+
+
+@pytest.mark.asyncio
+@patch("app.cogs.admin.admins.remove", new_callable=AsyncMock)
+async def test_admin_remove_command(
+    mock_remove: AsyncMock, admin_cog: Admin, mock_ctx: AsyncMock
+) -> None:
+    """!admin_remove удаляет администратора текущего сервера."""
+    mock_remove.return_value = "✅ Администратор удалён."
+
+    await admin_cog.admin_remove_command.callback(admin_cog, mock_ctx, user_id=123456789)
+
+    mock_remove.assert_awaited_once_with(guild_id=67890, user_id=123456789)
+    mock_ctx.send.assert_awaited_once_with("✅ Администратор удалён.")
+
+
+@pytest.mark.asyncio
+@patch("app.cogs.admin.admins.get_all")
+async def test_admin_list_command(
+    mock_get_all: MagicMock, admin_cog: Admin, mock_ctx: AsyncMock
+) -> None:
+    """!admin_list показывает администраторов текущего сервера."""
+    mock_get_all.return_value = {123456789: "atagaev", 987654321: "moderator"}
+
+    await admin_cog.admin_list_command.callback(admin_cog, mock_ctx)
+
+    mock_get_all.assert_called_once_with(67890)
+    message = mock_ctx.send.call_args.args[0]
+    assert "atagaev" in message
+    assert "123456789" in message
+    assert "moderator" in message
+
+
+@pytest.mark.asyncio
+@patch("app.cogs.admin.admins.get_all", return_value={})
+async def test_admin_list_command_empty(
+    mock_get_all: MagicMock, admin_cog: Admin, mock_ctx: AsyncMock
+) -> None:
+    """!admin_list сообщает о пустом списке."""
+    await admin_cog.admin_list_command.callback(admin_cog, mock_ctx)
+
+    mock_get_all.assert_called_once_with(67890)
+    assert "не назначены" in mock_ctx.send.call_args.args[0]
+
+
 # ── emoji_description_commands ──────────────────────────────────
 
 
@@ -273,12 +337,8 @@ async def test_emoji_add_command(
         nicknames_cog, mock_ctx, name="yoba", description="издевательство"
     )
 
-    mock_save.assert_awaited_once_with(
-        name="yoba", description="издевательство", guild_id=67890
-    )
-    mock_ctx.send.assert_awaited_once_with(
-        "✅ Описание эмодзи 'yoba' успешно добавлено!"
-    )
+    mock_save.assert_awaited_once_with(name="yoba", description="издевательство", guild_id=67890)
+    mock_ctx.send.assert_awaited_once_with("✅ Описание эмодзи 'yoba' успешно добавлено!")
 
 
 @pytest.mark.asyncio
