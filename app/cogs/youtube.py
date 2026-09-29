@@ -39,7 +39,9 @@ class YouTube(commands.Cog):
         """Включить или отключить отслеживание YouTube канала."""
         action = action.lower()
         if action not in ("on", "off"):
-            await ctx.send("❌ Используйте: `!youtube on/off название_канала`")
+            await ctx.send(
+                f"❌ Используйте: `{self.bot.command_prefix}youtube on/off название_канала`"
+            )
             return
 
         active = action == "on"
