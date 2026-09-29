@@ -26,6 +26,8 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.sql import func
 
+from app.core.config import get_database_settings
+
 load_dotenv()
 
 DATABASE_URL: str = os.getenv("DATABASE_URL", "")
@@ -42,7 +44,7 @@ if not DATABASE_URL_LOCAL:
         "DATABASE_URL_LOCAL не задан в переменных окружения. "
         "Установите переменную для подключения к локальному PostgreSQL."
     )
-SCHEMA = "discord"
+SCHEMA: str = get_database_settings().schema
 
 
 def get_engine(schema: str, db_url: str) -> AsyncEngine:
