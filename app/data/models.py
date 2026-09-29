@@ -249,7 +249,6 @@ class UserDescription(Base):
     """Модель описания пользователя Discord.
 
     Хранит ник пользователя, его описание и привязку к серверу.
-    Заменяет захардкоженный словарь USER_DESCRIPTIONS.
     """
 
     __tablename__ = "user_descriptions"
@@ -268,6 +267,23 @@ class UserDescription(Base):
     def __repr__(self) -> str:
         """Строковое представление модели UserDescription."""
         return f"<UserDescription(nick='{self.nick}', guild_id={self.guild_id})>"
+
+
+class BotAdmin(Base):
+    """Администратор бота, назначенный для конкретного Discord-сервера."""
+
+    __tablename__ = "bot_admins"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    guild_id = Column(BigInteger, nullable=False)
+    user_id = Column(BigInteger, nullable=False)
+    username = Column(String(100), nullable=False)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("guild_id", "user_id", name="uq_bot_admin_per_guild"),
+        Index("idx_bot_admin_guild", "guild_id"),
+    )
 
 
 async def init_models() -> None:
