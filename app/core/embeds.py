@@ -12,8 +12,8 @@ from app.tools.prompt import RANK_CONFIG
 from app.tools.utils import darken_color, get_rank_description
 
 
-def create_help_embed() -> discord.Embed:
-    """Создает embed для команды !help."""
+def create_help_embed(prefix: str) -> discord.Embed:
+    """Создает embed со справкой для текущего префикса команд."""
     embed = discord.Embed(
         title="📋 Справка по командам бота",
         color=discord.Color.blue(),
@@ -23,13 +23,13 @@ def create_help_embed() -> discord.Embed:
     embed.add_field(
         name="🎯 Основные команды",
         value=(
-            "`!help` - показать эту справку\n"
-            "`!rank` - узнать свой ранг и статистику\n"
-            "`!rank list` - показать все возможные ранги\n"
-            "`!toxic` - прожарка чата (по умолчанию 20 сообщений)\n"
-            "`!toxic [число]` - прожарка указанного количества сообщений\n"
-            "`!toxic [образ]` - прожарка в выбранном образе\n"
-            "`!toxic list` - показать список доступных образов"
+            f"`{prefix}help` - показать эту справку\n"
+            f"`{prefix}rank` - узнать свой ранг и статистику\n"
+            f"`{prefix}rank list` - показать все возможные ранги\n"
+            f"`{prefix}toxic` - прожарка чата (по умолчанию 20 сообщений)\n"
+            f"`{prefix}toxic [число]` - прожарка указанного количества сообщений\n"
+            f"`{prefix}toxic [образ]` - прожарка в выбранном образе\n"
+            f"`{prefix}toxic list` - показать список доступных образов"
         ),
         inline=False,
     )
@@ -37,8 +37,8 @@ def create_help_embed() -> discord.Embed:
     embed.add_field(
         name="📺 Команды для YouTube",
         value=(
-            "`!add_youtube [ID канала] [ID чата] [Название]` - добавить канал\n"
-            "`!youtube [on/off] [Название]` - вкл/выкл отслеживание канала\n"
+            f"`{prefix}add_youtube [ID канала] [ID чата] [Название]` - добавить канал\n"
+            f"`{prefix}youtube [on/off] [Название]` - вкл/выкл отслеживание канала\n"
             "*(только для администраторов)*"
         ),
         inline=False,
@@ -47,10 +47,10 @@ def create_help_embed() -> discord.Embed:
     embed.add_field(
         name="📝 Описания пользователей",
         value=(
-            "`!desc_list` - показать все описания\n"
-            "`!desc_add [ник] [описание]` - добавить/обновить\n"
-            "`!desc_remove [ник]` - удалить описание\n"
-            "`!desc_reload` - перезагрузить из БД\n"
+            f"`{prefix}desc_list` - показать все описания\n"
+            f"`{prefix}desc_add [ник] [описание]` - добавить/обновить\n"
+            f"`{prefix}desc_remove [ник]` - удалить описание\n"
+            f"`{prefix}desc_reload` - перезагрузить из БД\n"
             "*(все команды кроме desc_list только для админов)*"
         ),
         inline=False,
@@ -59,10 +59,10 @@ def create_help_embed() -> discord.Embed:
     embed.add_field(
         name="😀 Описания эмодзи",
         value=(
-            "`!emoji_list` - показать описания эмодзи\n"
-            "`!emoji_add [имя] [описание]` - добавить/обновить описание\n"
-            "`!emoji_remove [имя]` - удалить описание\n"
-            "`!emoji_reload` - перезагрузить из БД\n"
+            f"`{prefix}emoji_list` - показать описания эмодзи\n"
+            f"`{prefix}emoji_add [имя] [описание]` - добавить/обновить описание\n"
+            f"`{prefix}emoji_remove [имя]` - удалить описание\n"
+            f"`{prefix}emoji_reload` - перезагрузить из БД\n"
             "*(все команды кроме emoji_list только для админов)*"
         ),
         inline=False,
@@ -71,11 +71,11 @@ def create_help_embed() -> discord.Embed:
     embed.add_field(
         name="🛡️ Администрирование",
         value=(
-            "`!reset` - очистка истории чата\n"
-            "`!ai` - переключить/выбрать AI-провайдера\n"
-            "`!admin_add [имя] [ID]` - добавить администратора бота\n"
-            "`!admin_remove [ID]` - удалить администратора бота\n"
-            "`!admin_list` - показать администраторов текущего сервера\n"
+            f"`{prefix}reset` - очистка истории чата\n"
+            f"`{prefix}ai` - переключить/выбрать AI-провайдера\n"
+            f"`{prefix}admin_add [имя] [ID]` - добавить администратора бота\n"
+            f"`{prefix}admin_remove [ID]` - удалить администратора бота\n"
+            f"`{prefix}admin_list` - показать администраторов текущего сервера\n"
             "*(команды управления администраторами только для администраторов)*"
         ),
         inline=False,
