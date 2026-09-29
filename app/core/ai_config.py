@@ -25,7 +25,7 @@ PROVIDERS: dict[str, dict[str, str]] = {
 }
 
 _active_provider: str = os.getenv("AI_PROVIDER", "polza")
-_active_model: str = os.getenv("AI_MODEL", "gemini-3-flash-preview")
+_active_model: str = os.getenv("AI_MODEL", "openai/gpt-6-luna")
 _cached_client: AsyncOpenAI | None = None
 _cached_provider_name: str | None = None
 
