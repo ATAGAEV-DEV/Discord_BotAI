@@ -6,6 +6,7 @@ import feedparser
 import pytz
 from sqlalchemy import select
 
+from app.core import config
 from app.data.models import YouTubeChannel, YouTubeVideo, async_session
 
 
@@ -34,7 +35,9 @@ class YouTubeNotifier:
         feed = await asyncio.to_thread(feedparser.parse, url)
 
         if feed.status != 200 or not feed.entries:
-            timestamp = datetime.now(tz=pytz.timezone("Europe/Moscow")).strftime("%d.%m.%Y %H:%M:%S")
+            timestamp = datetime.now(tz=pytz.timezone(config.BOT_TIMEZONE)).strftime(
+                "%d.%m.%Y %H:%M:%S"
+            )
             print(
                 f"[{timestamp}] ❌ Неверный или недоступный канал: "
                 f"{channel.name} (ID: {channel.channel_id})"
