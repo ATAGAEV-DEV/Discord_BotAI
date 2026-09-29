@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 
 from app.core.scheduler import start_scheduler
-from app.data import emoji_descriptions_cache, user_descriptions_cache
+from app.data import admins, emoji_descriptions_cache, user_descriptions_cache
 from app.data.models import init_models
 from app.services.daily_report import ReportGenerator
 from app.services.youtube_notifier import YouTubeNotifier
@@ -50,6 +50,7 @@ class DisBot(commands.Bot):
     async def on_ready(self) -> None:
         """Инициализация при подключении бота к Discord."""
         await init_models()
+        await admins.load_all()
         await user_descriptions_cache.load_all()
         await emoji_descriptions_cache.load_all()
         self.report_generator = ReportGenerator(self)
