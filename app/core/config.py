@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+AI_GENERATE_TIMEOUT: float = 100.0  # Секунды для генерации ответа и запроса к AI API
+
 PROVIDERS: dict[str, dict[str, str]] = {
     "proxyapi": {
         "token_env": "AI_TOKEN",
