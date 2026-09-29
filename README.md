@@ -147,14 +147,14 @@
 Префикс не должен быть пустым, таймзона должна существовать в `pytz`, а интервал —
 быть положительным целым числом. Примеры команд в README используют префикс `!`.
 
-#### 1. Настройка лимитов ([main.py](https://github.com/ATAGAEV95/Discord_BotAI/blob/main/main.py))
-Откройте файл [main.py](https://github.com/ATAGAEV95/Discord_BotAI/blob/main/main.py) и найдите блок настроек:
+#### 1. Настройка лимитов ([app/core/config.py](https://github.com/ATAGAEV95/Discord_BotAI/blob/main/app/core/config.py))
+Откройте файл [app/core/config.py](https://github.com/ATAGAEV95/Discord_BotAI/blob/main/app/core/config.py) и измените нужные значения (ниже указаны значения по умолчанию):
 
 ```python
 # Лимиты
-CONTEXT_LIMIT = 50      # Сколько последних сообщений бот помнит в разговоре
-REPORT_MSG_LIMIT = 15   # Через сколько сообщений генерировать отчет
-REPORT_TIME_LIMIT = 60  # Тайм-аут (минуты) для отправки отчета
+CONTEXT_LIMIT: int = 100     # Количество строк контекста для RAG
+REPORT_MSG_LIMIT: int = 15   # Порог сообщений для создания отчёта
+REPORT_TIME_LIMIT: int = 60  # Время ожидания в минутах для создания отчёта
 ```
 
 #### 2. Настройка личности (`app/tools/prompt.py`)
