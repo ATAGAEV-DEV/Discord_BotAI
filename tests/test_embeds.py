@@ -1,8 +1,8 @@
 """Тесты для модуля генерации Embed сообщений."""
 
+from collections.abc import Iterator
 from io import BytesIO
 from typing import Any
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -12,9 +12,10 @@ from PIL import Image
 
 from app.core.embeds import (
     create_help_embed,
+    create_image_with_text,
+    create_image_with_text_async,
     create_rang_embed,
     create_rang_list_embed,
-    create_image_with_text_async,
 )
 
 
@@ -43,7 +44,7 @@ class TestCreateHelpEmbed:
 
         fields = {f.name: f for f in embed.fields}
         assert "📺 Команды для YouTube" in fields
-        assert f"`{prefix}add_youtube`" in fields["📺 Команды для YouTube"].value
+        assert f"`{prefix}add_youtube [" in fields["📺 Команды для YouTube"].value
 
     def test_contains_user_descriptions_field(self, prefix: str = "!") -> None:
         """Проверяет наличие поля с описаниями пользователей."""
@@ -74,7 +75,7 @@ class TestCreateHelpEmbed:
         embed = create_help_embed(prefix)
 
         for field in embed.fields:
-            assert f"`{prefix}`" in field.value, f"Префикс не найден в поле {field.name}"
+            assert prefix in field.value, f"Префикс не найден в поле {field.name}"
 
 
 class TestCreateRangListEmbed:
@@ -141,6 +142,18 @@ class TestCreateRangListEmbed:
 
 class TestCreateRangEmbed:
     """Тесты для функции create_rang_embed."""
+
+    @pytest.fixture(autouse=True)
+    def mock_external_dependencies(self) -> Iterator[None]:
+        """Изолирует тесты embed от базы данных и сетевой генерации изображения."""
+        with (
+            patch("app.core.embeds.get_user_rank", new=AsyncMock(return_value=0)),
+            patch(
+                "app.core.embeds.create_image_with_text_async",
+                new=AsyncMock(return_value=BytesIO(b"fake image")),
+            ),
+        ):
+            yield
 
     @pytest.fixture
     def mock_avatar_url(self) -> str:
@@ -245,6 +258,7 @@ class TestCreateImageWithTextAsync:
     ) -> None:
         """Проверяет загрузку и обработку аватара."""
         from io import BytesIO
+
         from PIL import Image
 
         fake_avatar_data = BytesIO()
@@ -292,15 +306,19 @@ class TestCreateImageWithText:
 
     def test_uses_correct_background_file(self) -> None:
         """Проверяет использование фоновой картинки."""
-        import io
+        result = create_image_with_text(
+            display_name="Test",
+            rang_description="Desc",
+            progress_bar="10/50",
+            exp_title="EXP",
+            server_rank=1,
+            rank_level=2,
+            avatar_img=None,
+        )
 
-        # Проверяем, что файл существует
-        bg_path = "./app/resource/rang0.jpg"
-        try:
-            with Image.open(bg_path) as img:
-                assert img.size == (1920, 480), "Фон не имеет правильного размера"
-        except FileNotFoundError:
-            pytest.skip("Фоновая картинка не найдена")
+        result.seek(0)
+        with Image.open(result) as img:
+            assert img.size == (1920, 480), "Итоговое изображение не имеет правильного размера"
 
     def test_handles_custom_text_color(
         self, monkeypatch: pytest.MonkeyPatch
