@@ -1,12 +1,9 @@
 import os
 
 import discord
-from dotenv import load_dotenv
 
-load_dotenv()
-
-from app.core import config  # noqa: E402
-from app.core.bot import DisBot  # noqa: E402
+from app.core import config
+from app.core.bot import DisBot
 
 
 def main() -> None:
