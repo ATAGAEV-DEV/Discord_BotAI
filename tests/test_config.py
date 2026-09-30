@@ -4,8 +4,10 @@ import pytest
 
 from app.core import config
 from app.core.config import (
+    AISettings,
     DatabaseSettings,
     SchedulerSettings,
+    get_ai_settings,
     get_command_prefix,
     get_database_settings,
     get_scheduler_settings,
@@ -31,6 +33,51 @@ def test_empty_database_schema_keeps_public_fallback(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("DATABASE_SCHEMA", "")
 
     assert get_database_settings().schema == ""
+
+
+def test_ai_settings_default_when_environment_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """При отсутствии AI-переменных используются значения по умолчанию."""
+    for name in (
+        "AI_PROVIDER",
+        "AI_MODEL",
+        "AI_MODEL_MINI",
+        "AI_EMBEDDING_PROVIDER",
+        "AI_EMBEDDING_MODEL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    assert get_ai_settings() == AISettings()
+
+
+def test_ai_settings_environment_overrides_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Значения AI из окружения имеют приоритет над значениями по умолчанию."""
+    monkeypatch.setenv("AI_PROVIDER", "aitunnel")
+    monkeypatch.setenv("AI_MODEL", "custom-model")
+    monkeypatch.setenv("AI_MODEL_MINI", "custom-mini-model")
+    monkeypatch.setenv("AI_EMBEDDING_PROVIDER", "proxyapi")
+    monkeypatch.setenv("AI_EMBEDDING_MODEL", "custom-embedding-model")
+
+    assert get_ai_settings() == AISettings(
+        provider="aitunnel",
+        model="custom-model",
+        mini_model="custom-mini-model",
+        embedding_provider="proxyapi",
+        embedding_model="custom-embedding-model",
+    )
+
+
+def test_empty_ai_environment_uses_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Пустые AI-переменные считаются отсутствующими."""
+    for name in (
+        "AI_PROVIDER",
+        "AI_MODEL",
+        "AI_MODEL_MINI",
+        "AI_EMBEDDING_PROVIDER",
+        "AI_EMBEDDING_MODEL",
+    ):
+        monkeypatch.setenv(name, "")
+
+    assert get_ai_settings() == AISettings()
 
 
 def test_scheduler_settings_defaults() -> None:
