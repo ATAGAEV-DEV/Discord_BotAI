@@ -9,14 +9,31 @@ from app.tools.prompt import EMOJI_LIST_STRING, EMOJIS, RANK_CONFIG, SYSTEM_PROM
 ENCODING = tiktoken.encoding_for_model("gpt-4o-mini")
 
 _EMOJI_TAG_RE = re.compile(r"\[e:(\w+)\]")
-
+_MALFORMED_EMOJI_RE = re.compile(
+    r"(?P<protected>(?i:https?://|www\.)\S+|<a?:\w+:\d+>)"
+    r"|(?<![\w:/\\<>\[\]])"
+    r"(?::?e:(?P<prefixed_name>\w+)|:(?P<shortcode_name>\w+):)"
+    r"(?![\w:/\\<>\[\]])"
+)
 
 
 def replace_emojis(text: str, emoji_ids: dict[str, str]) -> str:
-    """Заменяет теги [e:name] на Discord-эмодзи <:name:id>.
+    """Заменяет теги [e:name] и известные ошибочные маркеры на <:name:id>.
 
-    Если эмодзи с таким именем не найден в emoji_ids — тег удаляется.
+    Формы :e:name, :name: и e:name исправляются только при точном совпадении
+    имени с emoji_ids и наличии ID. Неизвестные ошибочные маркеры, фрагменты
+    слов, URL и готовых Discord-эмодзи не нормализуются.
+    Правильный тег [e:name] без ID удаляется, как и раньше.
     """
+    def _normalize(match: re.Match[str]) -> str:
+        """Нормализует только отдельные ошибочные маркеры из серверного кэша."""
+        if match.group("protected") is not None:
+            return match.group(0)
+        name = match.group("prefixed_name") or match.group("shortcode_name")
+        if name and emoji_ids.get(name):
+            return f"[e:{name}]"
+        return match.group(0)
+
     def _replace(match: re.Match) -> str:
         name = match.group(1)
         emoji_id = emoji_ids.get(name)
@@ -24,7 +41,8 @@ def replace_emojis(text: str, emoji_ids: dict[str, str]) -> str:
             return f"<:{name}:{emoji_id}>"
         return ""
 
-    return _EMOJI_TAG_RE.sub(_replace, text)
+    normalized_text = _MALFORMED_EMOJI_RE.sub(_normalize, text)
+    return _EMOJI_TAG_RE.sub(_replace, normalized_text)
 
 
 def user_prompt(name: str, guild_id: int | None = None) -> str:
