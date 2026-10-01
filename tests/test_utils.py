@@ -4,6 +4,7 @@ import pytest
 
 from app.tools.prompt import RANK_NAMES
 from app.tools.utils import (
+    chunk_message,
     contains_only_urls,
     count_tokens,
     darken_color,
@@ -103,6 +104,33 @@ class TestCountTokens:
     def test_returns_int(self) -> None:
         """Проверяем тип результата."""
         assert isinstance(count_tokens("тест"), int)
+
+
+# ── chunk_message ────────────────────────────────────────────────
+
+
+class TestChunkMessage:
+    """Тесты для функции chunk_message."""
+
+    def test_short_message_is_unchanged(self) -> None:
+        """Сообщение в пределах лимита не разбивается."""
+        assert chunk_message("short", limit=10) == ["short"]
+
+    def test_splits_by_lines(self) -> None:
+        """Строки объединяются, пока результат не превышает лимит."""
+        assert chunk_message("a\nb\nc", limit=3) == ["a\nb", "c"]
+
+    def test_splits_overlong_line(self) -> None:
+        """Одна слишком длинная строка разбивается принудительно."""
+        assert chunk_message("12345", limit=3) == ["123", "45"]
+
+    def test_flushes_current_chunk_before_overlong_line(self) -> None:
+        """Накопленный текст отделяется перед длинной строкой."""
+        assert chunk_message("a\n12345", limit=3) == ["a", "123", "45"]
+
+    def test_does_not_append_empty_final_chunk(self) -> None:
+        """Пустая строка в конце не добавляет пустой чанк."""
+        assert chunk_message("a\n", limit=1) == ["a"]
 
 
 # ── get_rank_description ────────────────────────────────────────

@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 from discord import File
-from PIL import Image
+from PIL import Image, ImageFont
 
 from app.core.embeds import (
     create_help_embed,
@@ -16,6 +16,7 @@ from app.core.embeds import (
     create_image_with_text_async,
     create_rang_embed,
     create_rang_list_embed,
+    download_avatar_async,
 )
 
 
@@ -287,6 +288,75 @@ class TestCreateImageWithTextAsync:
                 mock_download.assert_called_once()
 
 
+class TestDownloadAvatarAsync:
+    """Тесты для асинхронной загрузки аватара."""
+
+    @pytest.mark.asyncio
+    async def test_returns_none_for_empty_url(self) -> None:
+        """Пустой URL не вызывает сетевой запрос."""
+        result = await download_avatar_async(None)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_image_for_successful_response(self) -> None:
+        """Успешный ответ преобразуется в RGBA-изображение."""
+        source_image = Image.new("RGB", (10, 10), (255, 0, 0))
+        image_data = BytesIO()
+        source_image.save(image_data, format="PNG")
+
+        response = MagicMock(status=200)
+        response.read = AsyncMock(return_value=image_data.getvalue())
+        response_context = MagicMock()
+        response_context.__aenter__ = AsyncMock(return_value=response)
+        response_context.__aexit__ = AsyncMock(return_value=None)
+
+        session = MagicMock()
+        session.get.return_value = response_context
+        session.__aenter__ = AsyncMock(return_value=session)
+        session.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("app.core.embeds.aiohttp.ClientSession", return_value=session):
+            result = await download_avatar_async("https://example.com/avatar.png")
+
+        assert result is not None
+        assert result.mode == "RGBA"
+        assert result.size == (10, 10)
+        session.get.assert_called_once_with("https://example.com/avatar.png")
+        response.read.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_returns_none_for_unsuccessful_response(self) -> None:
+        """Ответ с неуспешным HTTP-статусом не создает изображение."""
+        response = MagicMock(status=404)
+        response.read = AsyncMock()
+        response_context = MagicMock()
+        response_context.__aenter__ = AsyncMock(return_value=response)
+        response_context.__aexit__ = AsyncMock(return_value=None)
+
+        session = MagicMock()
+        session.get.return_value = response_context
+        session.__aenter__ = AsyncMock(return_value=session)
+        session.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("app.core.embeds.aiohttp.ClientSession", return_value=session):
+            result = await download_avatar_async("https://example.com/missing.png")
+
+        assert result is None
+        response.read.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_download_raises(self) -> None:
+        """Исключение сетевого клиента обрабатывается и возвращает None."""
+        with patch(
+            "app.core.embeds.aiohttp.ClientSession",
+            side_effect=RuntimeError("network error"),
+        ):
+            result = await download_avatar_async("https://example.com/avatar.png")
+
+        assert result is None
+
+
 class TestCreateImageWithText:
     """Тесты для синхронной функции создания изображения."""
 
@@ -350,6 +420,88 @@ class TestCreateImageWithText:
             rank_level=6,
             text_color=(255, 73, 73),
             bg_filename="rang3.png",
+            avatar_img=None,
+        )
+
+        assert isinstance(result, BytesIO)
+
+    def test_handles_avatar(self) -> None:
+        """Проверяет обработку и наложение аватара пользователя."""
+        avatar = Image.new("RGBA", (100, 100), (255, 0, 0, 255))
+
+        result = create_image_with_text(
+            display_name="TestUser",
+            rang_description="Бич",
+            progress_bar="100/500",
+            exp_title="EXP",
+            server_rank=5,
+            rank_level=6,
+            avatar_img=avatar,
+        )
+
+        assert isinstance(result, BytesIO)
+
+    def test_continues_when_avatar_processing_fails(self) -> None:
+        """Ошибка обработки аватара не прерывает создание изображения."""
+        avatar = MagicMock(spec=Image.Image)
+        avatar.resize.side_effect = RuntimeError("invalid avatar")
+
+        result = create_image_with_text(
+            display_name="TestUser",
+            rang_description="Бич",
+            progress_bar="100/500",
+            exp_title="EXP",
+            server_rank=5,
+            rank_level=6,
+            avatar_img=avatar,
+        )
+
+        assert isinstance(result, BytesIO)
+
+    def test_uses_default_fonts_when_font_files_are_unavailable(
+        self,
+    ) -> None:
+        """При ошибке загрузки шрифтов используются встроенные шрифты PIL."""
+        default_font = ImageFont.load_default()
+        with (
+            patch("app.core.embeds.ImageFont.truetype", side_effect=OSError),
+            patch("app.core.embeds.ImageFont.load_default", return_value=default_font),
+        ):
+            result = create_image_with_text(
+                display_name="TestUser",
+                rang_description="Бич",
+                progress_bar="100/500",
+                exp_title="EXP",
+                server_rank=5,
+                rank_level=6,
+                avatar_img=None,
+            )
+
+        assert isinstance(result, BytesIO)
+
+    def test_uses_small_font_for_medium_length_name(self) -> None:
+        """Для имени длиной от 20 до 27 символов используется малый шрифт."""
+        result = create_image_with_text(
+            display_name="A" * 20,
+            rang_description="Бич",
+            progress_bar="100/500",
+            exp_title="EXP",
+            server_rank=5,
+            rank_level=6,
+            avatar_img=None,
+        )
+
+        assert isinstance(result, BytesIO)
+
+    def test_uses_server_rank_font_for_long_name(self) -> None:
+        """Для имени длиной не менее 28 символов используется шрифт ранга."""
+        result = create_image_with_text(
+            display_name="A" * 28,
+            rang_description="Бич",
+            progress_bar="100/500",
+            exp_title="EXP",
+            server_rank=5,
+            rank_level=6,
             avatar_img=None,
         )
 
