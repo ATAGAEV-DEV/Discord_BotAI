@@ -1,7 +1,8 @@
 """Изолированные тесты для app/services/llama_integration.py."""
 
+from collections.abc import Callable
 from types import SimpleNamespace
-from typing import Any, Callable
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest

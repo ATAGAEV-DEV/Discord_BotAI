@@ -232,6 +232,59 @@ class TestUserPrompt:
         assert isinstance(user_prompt("atagaev"), str)
         assert isinstance(user_prompt("unknown"), str)
 
+    @pytest.mark.parametrize("name", ["atagaev", "unknown"], ids=["known-user", "unknown-user"])
+    @pytest.mark.parametrize("guild_id", [None, 123], ids=["fallback", "guild-emojis"])
+    def test_emoji_format_rules_survive_prompt_rendering(
+        self, monkeypatch: pytest.MonkeyPatch, name: str, guild_id: int | None
+    ) -> None:
+        """Правила эмодзи сохраняются при подстановке списка и удалении пустого user_info."""
+        from app.data import emoji_descriptions_cache, user_descriptions_cache
+
+        monkeypatch.setattr(
+            user_descriptions_cache, "_cache", {0: {"atagaev": "Арби, создатель бота"}}
+        )
+        monkeypatch.setattr(
+            emoji_descriptions_cache,
+            "_cache",
+            {
+                123: {"ServerLaugh42": "серверный смех"},
+                456: {"ForeignEmoji": "чужой смех"},
+            },
+        )
+
+        result = user_prompt(name, guild_id=guild_id)
+
+        required_rules = (
+            "4. Использовать только эмодзи сервера из списка ниже.",
+            "Копируй тег из списка точно: [e:ИМЯ], где ИМЯ — имя выбранного эмодзи.",
+            "Обязательно сохраняй обе квадратные скобки, префикс e: и регистр имени.",
+            "Правильный пример: Ну и отлично [e:Gachi1]",
+            "Неправильные варианты: :e:Gachi1, :Gachi1:, e:Gachi1.",
+            "Не копируй неправильное написание эмодзи из истории сообщений.",
+            "Перед выдачей ответа проверь, что каждый использованный тег "
+            "точно совпадает с тегом из списка.",
+            "Доступные эмодзи:",
+        )
+        for rule in required_rules:
+            assert rule in result
+
+        assert "{emoji_list}" not in result
+        assert "{user_info}" not in result
+        assert "[e:Gachi1] — смех" in result
+        assert "[e:ForeignEmoji]" not in result
+
+        if guild_id is None:
+            assert "[e:ServerLaugh42]" not in result
+        else:
+            assert "[e:ServerLaugh42] — серверный смех" in result
+
+        if name == "atagaev":
+            assert "5. Информация по пользователям" in result
+            assert "- atagaev: Арби, создатель бота" in result
+        else:
+            assert "5. " not in result
+            assert "Арби" not in result
+
     def test_guild_emoji_description_overrides_fallback(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -305,6 +358,7 @@ class TestReplaceEmojis:
     """Тесты для функции replace_emojis."""
 
     EMOJI_IDS = {"yoba": "1101900451852599427", "Gachi1": "469464559959277578"}
+    MALFORMED_FORMATS = [":e:{name}", ":{name}:", "e:{name}"]
 
     def test_replaces_known_emoji(self) -> None:
         """Известный эмодзи заменяется на Discord-формат."""
@@ -348,6 +402,147 @@ class TestReplaceEmojis:
     def test_returns_string(self) -> None:
         """Всегда возвращает строку."""
         assert isinstance(replace_emojis("тест [e:yoba]", self.EMOJI_IDS), str)
+
+    @pytest.mark.parametrize("marker_format", MALFORMED_FORMATS)
+    @pytest.mark.parametrize("name", ["yoba", "Gachi1", "ServerLaugh42"])
+    def test_replaces_known_malformed_markers(self, marker_format: str, name: str) -> None:
+        """Ошибочные формы известных серверных эмодзи заменяются по точному имени."""
+        emoji_ids = {**self.EMOJI_IDS, "ServerLaugh42": "300"}
+        text = marker_format.format(name=name)
+
+        assert replace_emojis(text, emoji_ids) == f"<:{name}:{emoji_ids[name]}>"
+
+    @pytest.mark.parametrize("marker_format", MALFORMED_FORMATS)
+    @pytest.mark.parametrize("name", ["unknown", "gachi1", "GACHI1", "Gachi1_extra"])
+    def test_unknown_malformed_markers_unchanged(self, marker_format: str, name: str) -> None:
+        """Неизвестные имена, другой регистр и более длинные имена не исправляются."""
+        text = f"текст {marker_format.format(name=name)} конец"
+
+        assert replace_emojis(text, self.EMOJI_IDS) == text
+
+    @pytest.mark.parametrize("marker_format", MALFORMED_FORMATS)
+    @pytest.mark.parametrize("emoji_ids", [{}, {"Gachi1": ""}], ids=["empty-cache", "empty-id"])
+    def test_malformed_markers_without_cached_id_unchanged(
+        self, marker_format: str, emoji_ids: dict[str, str]
+    ) -> None:
+        """Без ID из переданного кэша ошибочный маркер сохраняется целиком."""
+        text = f"текст {marker_format.format(name='Gachi1')} конец"
+
+        assert replace_emojis(text, emoji_ids) == text
+
+    @pytest.mark.parametrize("marker_format", MALFORMED_FORMATS)
+    def test_prompt_emoji_without_server_cache_entry_unchanged(self, marker_format: str) -> None:
+        """Наличие имени в стандартном промпте не разрешает замену без серверного ID."""
+        text = marker_format.format(name="Gachi1")
+
+        assert replace_emojis(text, {"ServerLaugh42": "300"}) == text
+
+    @pytest.mark.parametrize("marker_format", MALFORMED_FORMATS)
+    def test_malformed_markers_use_only_supplied_guild_cache(self, marker_format: str) -> None:
+        """ID и разрешённые имена не смешиваются между серверными словарями."""
+        known_marker = marker_format.format(name="Gachi1")
+        foreign_marker = marker_format.format(name="ForeignEmoji")
+        text = f"{known_marker} {foreign_marker}"
+
+        assert replace_emojis(text, {"Gachi1": "100"}) == f"<:Gachi1:100> {foreign_marker}"
+        assert replace_emojis(text, {"Gachi1": "200", "ForeignEmoji": "300"}) == (
+            "<:Gachi1:200> <:ForeignEmoji:300>"
+        )
+
+    @pytest.mark.parametrize("marker_format", MALFORMED_FORMATS)
+    @pytest.mark.parametrize(
+        ("prefix", "suffix"),
+        [("", ""), ("привет ", " пока"), ("(", "),"), ("«", "»!"), ("\t", "\n")],
+        ids=["whole-string", "sentence", "parentheses", "quotes", "whitespace"],
+    )
+    def test_malformed_markers_preserve_surrounding_text(
+        self, marker_format: str, prefix: str, suffix: str
+    ) -> None:
+        """Замена сохраняет окружающий текст, пунктуацию, табуляцию и переводы строк."""
+        marker = marker_format.format(name="Gachi1")
+
+        assert replace_emojis(f"{prefix}{marker}{suffix}", self.EMOJI_IDS) == (
+            f"{prefix}<:Gachi1:469464559959277578>{suffix}"
+        )
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "prefixe:Gachi1",
+            "prefix:e:Gachi1",
+            "prefix:Gachi1:",
+            "e:Gachi1suffix",
+            ":Gachi1:suffix",
+            "e:Gachi1/path",
+            "/e:Gachi1",
+            r"C:\e:Gachi1",
+            "<e:Gachi1>",
+            ":Gachi1:123",
+            ":e:Gachi1:",
+            "[e:Gachi1",
+            "e:Gachi1]",
+            "[e: Gachi1]",
+            "[e:Gachi1 ]",
+            "Gachi1 :Gachi1",
+        ],
+    )
+    def test_partial_and_unsupported_markers_unchanged(self, text: str) -> None:
+        """Фрагменты слов, путей и неподдерживаемых форматов не угадываются."""
+        assert replace_emojis(text, self.EMOJI_IDS) == text
+
+    @pytest.mark.parametrize("marker_format", MALFORMED_FORMATS)
+    @pytest.mark.parametrize("url_prefix", ["http://", "https://", "www.", "HTTPS://"])
+    def test_malformed_markers_in_urls_unchanged(
+        self, marker_format: str, url_prefix: str
+    ) -> None:
+        """Маркеры внутри URL сохраняются, а отдельный маркер после ссылки заменяется."""
+        marker = marker_format.format(name="Gachi1")
+        url = f"{url_prefix}example.com/{marker}?tag={marker}#{marker}"
+
+        assert replace_emojis(f"ссылка {url} потом {marker}", self.EMOJI_IDS) == (
+            f"ссылка {url} потом <:Gachi1:469464559959277578>"
+        )
+
+    @pytest.mark.parametrize("rendered", ["<:Gachi1:100>", "<a:Gachi1:200>", "<:yoba:300>"])
+    def test_rendered_discord_emojis_unchanged(self, rendered: str) -> None:
+        """Готовые статичные и анимированные Discord-эмодзи не переписываются."""
+        assert replace_emojis(f"{rendered} :e:Gachi1", self.EMOJI_IDS) == (
+            f"{rendered} <:Gachi1:469464559959277578>"
+        )
+
+    def test_mixed_standard_and_malformed_markers(self) -> None:
+        """Правильные неизвестные теги удаляются, ошибочные неизвестные сохраняются."""
+        text = "\t[e:yoba], :e:Gachi1! e:yoba; :Gachi1: [e:unknown] :e:unknown e:unknown :unknown:\n"
+
+        assert replace_emojis(text, self.EMOJI_IDS) == (
+            "\t<:yoba:1101900451852599427>, <:Gachi1:469464559959277578>! "
+            "<:yoba:1101900451852599427>; <:Gachi1:469464559959277578> "
+            " :e:unknown e:unknown :unknown:\n"
+        )
+
+    def test_does_not_replace_shorter_cached_names(self) -> None:
+        """Короткое имя и имя e не подменяют части более длинного ошибочного маркера."""
+        emoji_ids = {"Gachi": "100", "Gachi1": "200", "e": "300"}
+        text = ":e:Gachi1 e:Gachi1 :Gachi1: :e:unknown"
+
+        assert replace_emojis(text, emoji_ids) == (
+            "<:Gachi1:200> <:Gachi1:200> <:Gachi1:200> :e:unknown"
+        )
+
+    def test_standard_tags_keep_existing_behavior_in_urls(self) -> None:
+        """Защита ошибочных форматов не меняет прежнюю обработку правильных тегов."""
+        text = "https://example.com/[e:Gachi1]/[e:unknown]"
+
+        assert replace_emojis(text, self.EMOJI_IDS) == (
+            "https://example.com/<:Gachi1:469464559959277578>/"
+        )
+
+    def test_repeated_replacement_is_idempotent(self) -> None:
+        """Повторная обработка не портит уже заменённые эмодзи и неизвестные маркеры."""
+        text = "[e:yoba] :e:Gachi1 :Gachi1: e:Gachi1 :e:unknown <:Gachi1:100>"
+        result = replace_emojis(text, self.EMOJI_IDS)
+
+        assert replace_emojis(result, self.EMOJI_IDS) == result
 
 
 # ── strip_emoji ──────────────────────────────────────────────────

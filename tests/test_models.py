@@ -14,7 +14,6 @@ import sqlalchemy.ext.asyncio as sqlalchemy_asyncio
 from app.core import config
 from app.data import models
 
-
 MODELS_PATH = Path(__file__).parents[1] / "app" / "data" / "models.py"
 
 

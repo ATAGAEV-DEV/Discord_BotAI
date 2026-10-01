@@ -155,3 +155,46 @@ async def test_ai_generate_processes_context_and_response() -> None:
         ],
     )
     mock_create_task.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("marker", [":e:Gachi1", ":Gachi1:", "e:Gachi1"])
+async def test_ai_generate_repairs_cached_emoji_before_indexing(marker: str) -> None:
+    """Настоящая обработка исправляет известный маркер и убирает эмодзи из индекса."""
+    completion = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(content=f"Ответ **текст** {marker} и :e:unknown")
+            )
+        ]
+    )
+
+    with (
+        patch("app.core.handlers.llama_manager") as mock_llama,
+        patch("app.core.handlers.user_prompt", return_value="system prompt"),
+        patch("app.core.handlers.user_descriptions_cache.get_all", return_value={}),
+        patch("app.core.handlers.get_client") as mock_get_client,
+        patch("app.core.handlers.get_model", return_value="test-model"),
+        patch("app.core.handlers.count_tokens", return_value=7),
+        patch("app.core.handlers.asyncio.create_task") as mock_create_task,
+    ):
+        mock_llama.query_relevant_context = AsyncMock(return_value=[])
+        mock_llama.index_messages = AsyncMock()
+        mock_create_task.side_effect = lambda coroutine: coroutine.close()
+        mock_create = AsyncMock(return_value=completion)
+        mock_get_client.return_value.chat.completions.create = mock_create
+
+        result = await ai_generate(
+            "Как дела?", 12345, "Alice", emoji_ids={"Gachi1": "469464559959277578"}
+        )
+
+    assert result == "Ответ текст <:Gachi1:469464559959277578> и :e:unknown"
+    mock_create.assert_awaited_once()
+    mock_llama.index_messages.assert_called_once_with(
+        12345,
+        [
+            {"role": "user", "content": "[Пользователь: Alice] Как дела?"},
+            {"role": "assistant", "content": "Ответ текст  и :e:unknown"},
+        ],
+    )
+    mock_create_task.assert_called_once()
