@@ -15,6 +15,11 @@ _MALFORMED_EMOJI_RE = re.compile(
     r"(?::?e:(?P<prefixed_name>\w+)|:(?P<shortcode_name>\w+):)"
     r"(?![\w:/\\<>\[\]])"
 )
+_USER_MENTION_RE = re.compile(r"<@!?(\d+)>")
+_LITERAL_USER_MENTION_RE = re.compile(
+    r"(?P<protected>(?i:https?://|www\.)\S+|<[^>]*>)"
+    r"|(?<![\w.@/\\])@(?P<name>[\w.#-]+)"
+)
 
 
 def replace_emojis(text: str, emoji_ids: dict[str, str]) -> str:
@@ -46,15 +51,42 @@ def replace_emojis(text: str, emoji_ids: dict[str, str]) -> str:
     return _EMOJI_TAG_RE.sub(_replace, normalized_text)
 
 
+def resolve_user_mentions(
+    text: str, mentions: dict[int, str] | None = None
+) -> tuple[str, list[str]]:
+    """Заменяет Discord-упоминания на @username и возвращает уникальные имена.
+
+    Словарь ID → user.name передаётся из message.mentions. Неизвестные ID,
+    упоминания ролей и каналов остаются без изменений; кэш описаний не нужен.
+    """
+    mentions = mentions or {}
+    mentioned_names: dict[str, None] = {}
+
+    def _replace(match: re.Match[str]) -> str:
+        """Разрешает только ID пользователей из переданного сообщения."""
+        username = mentions.get(int(match.group(1)))
+        if not username:
+            return match.group(0)
+        mentioned_names.setdefault(username, None)
+        return f"@{username}"
+
+    resolved_text = _USER_MENTION_RE.sub(_replace, text)
+    return resolved_text, list(mentioned_names)
+
+
 def user_prompt(
     name: str,
     guild_id: int | None = None,
     emoji_ids: dict[str, str] | None = None,
+    *,
+    text: str = "",
+    mentioned_names: list[str] | None = None,
 ) -> str:
     """Формирует системный prompt с данными текущего сервера.
 
-    Непустое описание автора добавляется при точном совпадении имени на этом сервере,
-    независимо от истории и эмодзи. Без ``guild_id`` описания пользователей не добавляются.
+    Непустые описания автора и упомянутых аккаунтов добавляются без повторов,
+    независимо от истории и эмодзи. Текстовые @username должны точно совпадать
+    с ключом кэша, включая регистр. Без ``guild_id`` описания не добавляются.
     В список эмодзи попадают только описания этого сервера с непустым ID в ``emoji_ids``.
     """
     descriptions = user_descriptions_cache.get(guild_id) if guild_id is not None else {}
@@ -68,13 +100,24 @@ def user_prompt(
     )
     emoji_section = EMOJI_PROMPT.format(emoji_list=emoji_list).strip() + "\n" if emoji_list else ""
 
+    literal_names = [
+        match.group("name")
+        for match in _LITERAL_USER_MENTION_RE.finditer(text)
+        if match.group("name") in descriptions
+    ]
+    usernames = dict.fromkeys([name, *(mentioned_names or []), *literal_names])
+    user_lines = []
+    for username in usernames:
+        description = descriptions.get(username, "")
+        if description.strip():
+            user_lines.append(f"- {username}: {description}")
+
     user_info = ""
-    description = descriptions.get(name, "")
-    if description.strip():
+    if user_lines:
         user_info = (
             "Информация по пользователям с name (они должны совпадать побуквенно, "
             "иначе это другой юзер). Но не упоминать об этом постоянно:"
-            f"\n- {name}: {description}"
+            "\n" + "\n".join(user_lines)
         )
 
     return SYSTEM_PROMPT.format(emoji_section=emoji_section, user_info=user_info).strip()
