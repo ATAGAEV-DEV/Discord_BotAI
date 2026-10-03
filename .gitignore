@@ -14,3 +14,4 @@ app/services/audio_to_text.py
 app/services/weather_agent_old.py
 app/services/youtube_downloader.py
 .md
+.env.test
