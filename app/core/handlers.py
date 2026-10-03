@@ -47,7 +47,7 @@ async def clear_server_history(server_id: int) -> str | None:
 
 async def ai_generate(
     text: str,
-    server_id: int,
+    server_id: int | None,
     name: str,
     limit: int = 15,
     emoji_ids: dict[str, str] | None = None,
@@ -60,7 +60,7 @@ async def ai_generate(
             {"role": "system", "content": user_prompt(f"{name}", server_id, emoji_ids=emoji_ids)}
         ]
         relevant_contexts = await llama_manager.query_relevant_context(server_id, text, limit=limit)
-        descriptions = user_descriptions_cache.get_all()
+        descriptions = user_descriptions_cache.get(server_id) if server_id is not None else {}
         relevant_contexts = enrich_users_context(relevant_contexts, descriptions)
 
         if relevant_contexts:
