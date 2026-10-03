@@ -41,9 +41,10 @@ class ErrorHandler(commands.Cog):
                 response = await handlers.ai_generate(
                     ctx.message.content,
                     server_id,
-                    ctx.author,
+                    ctx.author.name,
                     limit=self.bot.context_limit,
                     emoji_ids=emoji_ids,
+                    mentions={user.id: user.name for user in ctx.message.mentions},
                 )
                 await ctx.send(f"{ctx.author.mention} {response}")
         elif isinstance(error, commands.CommandOnCooldown):
