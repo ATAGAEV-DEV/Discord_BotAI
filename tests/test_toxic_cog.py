@@ -3,6 +3,7 @@
 import sys
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+from importlib import import_module
 from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, MagicMock, call
 
@@ -13,6 +14,7 @@ from discord.ext.commands.view import StringView
 
 from app.cogs import toxic
 from app.core.bot import DisBot
+from app.tools.prompt import ROAST_PROMPT, ROAST_USER_PROMPT
 
 
 def _message(
@@ -56,19 +58,16 @@ def toxic_env(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
 
     ctx.channel.history = MagicMock(side_effect=history)
     response = SimpleNamespace(content="Готовая прожарка")
-    create = AsyncMock(
-        return_value=SimpleNamespace(choices=[SimpleNamespace(message=response)])
-    )
+    create = AsyncMock(return_value=SimpleNamespace(choices=[SimpleNamespace(message=response)]))
     client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
     get_client = MagicMock(return_value=client)
     get_model = MagicMock(return_value="test-roast-model")
     get_descriptions = MagicMock(return_value={"Alice": "любит Python", "Bob": "играет"})
     monkeypatch.setattr(toxic, "get_client", get_client)
     monkeypatch.setattr(toxic, "get_model", get_model)
-    monkeypatch.setattr(
-        toxic, "user_descriptions_cache", SimpleNamespace(get_all=get_descriptions)
-    )
-    monkeypatch.setattr(toxic, "ROAST_PROMPT", "Системная роль.\n{user_info}")
+    monkeypatch.setattr(toxic, "user_descriptions_cache", SimpleNamespace(get=get_descriptions))
+    monkeypatch.setattr(toxic, "ROAST_PROMPT", "Системная роль.\n{user_section}")
+    monkeypatch.setattr(toxic, "ROAST_USER_PROMPT", "{user_info}")
     monkeypatch.setattr(toxic, "ROAST_PERSONAS", {"babka": "Роль бабки", "robot": "Роль робота"})
     return SimpleNamespace(
         bot=bot,
@@ -104,7 +103,7 @@ def _assert_successful_roast(
 ) -> None:
     """Проверяет полный AI-запрос, ожидание отправки и закрытие typing-контекста."""
     env.ctx.channel.history.assert_called_once_with(limit=history_limit)
-    env.get_descriptions.assert_called_once_with()
+    env.get_descriptions.assert_called_once_with(456)
     env.get_client.assert_called_once_with()
     env.get_model.assert_called_once_with()
     expected_messages = [
@@ -327,6 +326,86 @@ async def test_empty_descriptions_still_build_valid_request(toxic_env: SimpleNam
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    ("guild_id", "local_descriptions", "expected_user_info"),
+    [
+        (
+            123,
+            {"Alice": "описание первого сервера", "Empty": "", "Blank": " \t\n "},
+            "- Alice: описание первого сервера",
+        ),
+        (
+            456,
+            {},
+            "- Alice: описание второго сервера\n- ForeignOnly: данные второго сервера",
+        ),
+        (123, {}, ""),
+        (123, {"Empty": "", "Blank": " \t\n "}, ""),
+        (789, {}, ""),
+        (999, {}, ""),
+        (None, {"Alice": "описание первого сервера"}, ""),
+    ],
+    ids=[
+        "first-guild-mixed",
+        "second-guild",
+        "foreign-only",
+        "all-blank",
+        "unknown-guild",
+        "empty-guild",
+        "dm",
+    ],
+)
+async def test_roast_uses_only_nonempty_current_guild_descriptions(
+    toxic_env: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+    guild_id: int | None,
+    local_descriptions: dict[str, str],
+    expected_user_info: str,
+) -> None:
+    """Настоящий roast prompt не получает чужие описания и не заявляет о пустых данных."""
+    from app.data import user_descriptions_cache
+
+    cache = {
+        0: {"Alice": "старое описание автора", "LegacyOnly": "старые общие данные"},
+        123: local_descriptions.copy(),
+        456: {"Alice": "описание второго сервера", "ForeignOnly": "данные второго сервера"},
+        999: {},
+    }
+    original_cache = {guild: descriptions.copy() for guild, descriptions in cache.items()}
+    monkeypatch.setattr(user_descriptions_cache, "_cache", cache)
+    toxic_env.get_descriptions.side_effect = user_descriptions_cache.get
+    monkeypatch.setattr(toxic, "ROAST_PROMPT", ROAST_PROMPT)
+    monkeypatch.setattr(toxic, "ROAST_USER_PROMPT", ROAST_USER_PROMPT)
+    toxic_env.ctx.guild = SimpleNamespace(id=guild_id) if guild_id is not None else None
+
+    await toxic_env.cog.roast_command.callback(toxic_env.cog, toxic_env.ctx)
+
+    if guild_id is None:
+        toxic_env.get_descriptions.assert_not_called()
+    else:
+        toxic_env.get_descriptions.assert_called_once_with(guild_id)
+    toxic_env.create.assert_awaited_once()
+    messages = toxic_env.create.await_args.kwargs["messages"]
+    assert [message["role"] for message in messages] == ["system", "user"]
+    expected_section = (
+        ROAST_USER_PROMPT.format(user_info=expected_user_info).strip() if expected_user_info else ""
+    )
+    system_prompt = messages[0]["content"]
+    assert system_prompt == ROAST_PROMPT.format(user_section=expected_section)
+    assert system_prompt.count("You have access to") == (1 if expected_user_info else 0)
+    assert "intimate knowledge" not in system_prompt
+    assert "старое описание автора" not in system_prompt
+    assert "старые общие данные" not in system_prompt
+    assert "Empty:" not in system_prompt
+    assert "Blank:" not in system_prompt
+    assert "{user_info}" not in system_prompt
+    assert "{user_section}" not in system_prompt
+    assert messages[1]["content"] == "Вот последние сообщения чата:\n[Alice]: Привет"
+    toxic_env.ctx.send.assert_awaited_once_with("Готовая прожарка")
+    assert user_descriptions_cache._cache == original_cache
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     ("content", "expected"),
     [
         (
@@ -515,11 +594,13 @@ async def test_cooldown_accepts_invocation_after_interval(invoked_env: SimpleNam
     assert invoked_env.ctx.channel.history.call_args_list == [call(limit=40), call(limit=40)]
     assert invoked_env.create.await_count == 2
     assert invoked_env.ctx.send.await_args_list == [
-        call("Готовая прожарка"), call("Готовая прожарка")
+        call("Готовая прожарка"),
+        call("Готовая прожарка"),
     ]
     assert invoked_env.typing.__aenter__.await_count == 2
     assert invoked_env.typing.__aexit__.await_args_list == [
-        call(None, None, None), call(None, None, None)
+        call(None, None, None),
+        call(None, None, None),
     ]
 
 
@@ -532,7 +613,8 @@ async def test_cooldown_is_independent_for_different_users(invoked_env: SimpleNa
     assert invoked_env.ctx.channel.history.call_count == 2
     assert invoked_env.create.await_count == 2
     assert invoked_env.ctx.send.await_args_list == [
-        call("Готовая прожарка"), call("Готовая прожарка")
+        call("Готовая прожарка"),
+        call("Готовая прожарка"),
     ]
 
 
@@ -542,9 +624,7 @@ async def test_user_cooldown_is_shared_across_guilds(invoked_env: SimpleNamespac
     await invoked_env.command.invoke(_invocation_context(invoked_env, guild_id=456))
 
     with pytest.raises(commands.CommandOnCooldown) as exc_info:
-        await invoked_env.command.invoke(
-            _invocation_context(invoked_env, seconds=5, guild_id=789)
-        )
+        await invoked_env.command.invoke(_invocation_context(invoked_env, seconds=5, guild_id=789))
 
     assert exc_info.value.retry_after == pytest.approx(25.0)
     assert exc_info.value.type is commands.BucketType.user
@@ -558,7 +638,7 @@ async def test_real_bot_loads_both_extensions_and_cleans_up(
     """Настоящий загрузчик регистрирует Cogs, команду и слушатель без login к Discord."""
     # load_extension временно заменяет sys.modules; восстановление не мешает другим тестам.
     for extension in ("app.cogs.ranks", "app.cogs.toxic"):
-        monkeypatch.setitem(sys.modules, extension, sys.modules[extension])
+        monkeypatch.setitem(sys.modules, extension, import_module(extension))
     async with commands.Bot(command_prefix="!", intents=discord.Intents.none()) as bot:
         await bot.load_extension("app.cogs.ranks")
         await bot.load_extension("app.cogs.toxic")

@@ -74,7 +74,7 @@ async def test_ai_generate_uses_shared_api_timeout() -> None:
     with (
         patch("app.core.handlers.llama_manager") as mock_llama,
         patch("app.core.handlers.user_prompt", return_value="system prompt"),
-        patch("app.core.handlers.user_descriptions_cache.get_all", return_value={}),
+        patch("app.core.handlers.user_descriptions_cache.get", return_value={}),
         patch("app.core.handlers.get_client") as mock_get_client,
     ):
         mock_llama.query_relevant_context = AsyncMock(return_value=[])
@@ -99,9 +99,9 @@ async def test_ai_generate_processes_context_and_response() -> None:
         patch("app.core.handlers.llama_manager") as mock_llama,
         patch("app.core.handlers.user_prompt", return_value="system prompt") as mock_user_prompt,
         patch(
-            "app.core.handlers.user_descriptions_cache.get_all",
+            "app.core.handlers.user_descriptions_cache.get",
             return_value={"Alice": "Алиса"},
-        ),
+        ) as mock_descriptions,
         patch(
             "app.core.handlers.enrich_users_context",
             return_value=["контекст сервера"],
@@ -136,6 +136,7 @@ async def test_ai_generate_processes_context_and_response() -> None:
 
     assert result == "clean answer 😀"
     mock_user_prompt.assert_called_once_with("Alice", 12345, emoji_ids={"smile": "100"})
+    mock_descriptions.assert_called_once_with(12345)
     mock_llama.query_relevant_context.assert_awaited_once_with(12345, "Как дела?", limit=7)
     mock_enrich.assert_called_once_with(["raw context"], {"Alice": "Алиса"})
     mock_create.assert_awaited_once()
@@ -198,7 +199,9 @@ async def test_ai_generate_sends_only_current_guild_emojis(
     from app.data import emoji_descriptions_cache, user_descriptions_cache
 
     monkeypatch.setattr(
-        user_descriptions_cache, "_cache", {0: {"Alice": "описание автора"}} if known_user else {}
+        user_descriptions_cache,
+        "_cache",
+        {123: {"Alice": "описание автора"}, 456: {"Alice": "описание автора"}} if known_user else {},
     )
     monkeypatch.setattr(
         emoji_descriptions_cache,
@@ -249,7 +252,7 @@ async def test_ai_generate_sends_only_current_guild_emojis(
         assert "эмодзи" not in system_prompt
         assert "[e:" not in system_prompt
 
-    if known_user:
+    if known_user and server_id in (123, 456):
         assert system_prompt.count("Информация по пользователям") == 1
         assert system_prompt.count("- Alice: описание автора") == 1
     else:
@@ -260,6 +263,119 @@ async def test_ai_generate_sends_only_current_guild_emojis(
     assert "{user_info}" not in system_prompt
     assert messages[1]["content"] == "[Пользователь: Alice] Как дела?"
     mock_llama.query_relevant_context.assert_awaited_once_with(server_id, "Как дела?", limit=15)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("has_context", [False, True], ids=["no-history", "with-history"])
+@pytest.mark.parametrize(
+    ("server_id", "local_description", "expected_author"),
+    [
+        (123, "автор первого сервера", "автор первого сервера"),
+        (456, None, "автор второго сервера"),
+        (123, "", ""),
+        (123, " \t\n ", ""),
+        (123, None, ""),
+        (789, None, ""),
+        (999, None, ""),
+        (None, None, ""),
+    ],
+    ids=[
+        "first-guild",
+        "second-guild",
+        "empty-description",
+        "whitespace-description",
+        "foreign-author-only",
+        "unknown-guild",
+        "empty-guild",
+        "dm",
+    ],
+)
+async def test_ai_generate_isolates_descriptions_in_both_system_messages(
+    monkeypatch: pytest.MonkeyPatch,
+    server_id: int | None,
+    local_description: str | None,
+    expected_author: str,
+    has_context: bool,
+) -> None:
+    """Автор добавляется независимо от истории, а оба system-блока изолированы сервером."""
+    from app.data import emoji_descriptions_cache, user_descriptions_cache
+
+    cache = {
+        0: {"Alice": "старое описание автора", "LegacyOnly": "старые общие данные"},
+        123: {"Bob": "контекст первого сервера", "Empty": "", "Blank": " \t\n "},
+        456: {
+            "Alice": "автор второго сервера",
+            "Bob": "контекст второго сервера",
+            "ForeignOnly": "данные второго сервера",
+        },
+        999: {},
+    }
+    if local_description is not None:
+        cache[123]["Alice"] = local_description
+    original_cache = {guild: descriptions.copy() for guild, descriptions in cache.items()}
+    monkeypatch.setattr(user_descriptions_cache, "_cache", cache)
+    monkeypatch.setattr(emoji_descriptions_cache, "_cache", {})
+    users_context = "Список пользователей сервера: Bob, ForeignOnly, LegacyOnly, Empty, Blank"
+    contexts = [users_context, "Обычная история"] if has_context else []
+    completion = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="Ответ."))]
+    )
+
+    with (
+        patch("app.core.handlers.llama_manager") as mock_llama,
+        patch("app.core.handlers.get_client") as mock_get_client,
+        patch("app.core.handlers.get_model", return_value="test-model"),
+        patch("app.core.handlers.asyncio.create_task") as mock_create_task,
+        patch(
+            "app.core.handlers.user_descriptions_cache.get_all",
+            side_effect=AssertionError("AI не должен читать описания со всех серверов"),
+        ),
+    ):
+        mock_llama.query_relevant_context = AsyncMock(return_value=contexts)
+        mock_llama.index_messages = AsyncMock()
+        mock_create_task.side_effect = lambda coroutine: coroutine.close()
+        mock_create = AsyncMock(return_value=completion)
+        mock_get_client.return_value.chat.completions.create = mock_create
+
+        result = await ai_generate("Как дела?", server_id, "Alice")
+
+    assert result == "Ответ."
+    mock_create.assert_awaited_once()
+    messages = mock_create.await_args.kwargs["messages"]
+    assert [message["role"] for message in messages] == (
+        ["system", "system", "user"] if has_context else ["system", "user"]
+    )
+    author_prompt = messages[0]["content"]
+    if expected_author:
+        assert author_prompt.count(f"- Alice: {expected_author}") == 1
+    else:
+        assert "Информация по пользователям" not in author_prompt
+        assert "- Alice:" not in author_prompt
+    assert "эмодзи" not in author_prompt
+
+    if has_context:
+        expected_users = {
+            123: "Bob: контекст первого сервера; ForeignOnly; LegacyOnly; Empty; Blank",
+            456: (
+                "Bob: контекст второго сервера; ForeignOnly: данные второго сервера; "
+                "LegacyOnly; Empty; Blank"
+            ),
+        }.get(server_id, "Bob; ForeignOnly; LegacyOnly; Empty; Blank")
+        assert messages[1]["content"] == (
+            "Релевантный контекст из истории сервера:\n"
+            f"Список пользователей сервера: {expected_users}\nОбычная история"
+        )
+        assert "Alice" not in messages[1]["content"]
+
+    all_system_content = "\n".join(
+        message["content"] for message in messages if message["role"] == "system"
+    )
+    assert "старое описание автора" not in all_system_content
+    assert "старые общие данные" not in all_system_content
+    assert "Empty:" not in all_system_content
+    assert "Blank:" not in all_system_content
+    assert user_descriptions_cache._cache == original_cache
+    assert messages[-1]["content"] == "[Пользователь: Alice] Как дела?"
 
 
 @pytest.mark.asyncio
@@ -277,7 +393,7 @@ async def test_ai_generate_repairs_cached_emoji_before_indexing(marker: str) -> 
     with (
         patch("app.core.handlers.llama_manager") as mock_llama,
         patch("app.core.handlers.user_prompt", return_value="system prompt"),
-        patch("app.core.handlers.user_descriptions_cache.get_all", return_value={}),
+        patch("app.core.handlers.user_descriptions_cache.get", return_value={}),
         patch("app.core.handlers.get_client") as mock_get_client,
         patch("app.core.handlers.get_model", return_value="test-model"),
         patch("app.core.handlers.count_tokens", return_value=7),

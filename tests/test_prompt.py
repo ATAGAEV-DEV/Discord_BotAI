@@ -1,6 +1,6 @@
 """Unit-тесты для app/tools/prompt.py."""
 
-from app.tools.prompt import EMOJI_PROMPT, SYSTEM_PROMPT
+from app.tools.prompt import EMOJI_PROMPT, ROAST_PROMPT, ROAST_USER_PROMPT, SYSTEM_PROMPT
 
 
 class TestConstants:
@@ -25,3 +25,12 @@ class TestConstants:
         assert EMOJI_PROMPT.count("Доступные эмодзи:") == 1
         assert "[e:ИМЯ]" in EMOJI_PROMPT
         assert "{user_info}" not in EMOJI_PROMPT
+
+    def test_roast_prompt_has_optional_user_section(self) -> None:
+        """Базовый roast prompt не обещает пользовательские данные без отдельного блока."""
+        assert ROAST_PROMPT.count("{user_section}") == 1
+        assert "{user_info}" not in ROAST_PROMPT
+        assert "You have access to" not in ROAST_PROMPT
+        assert "intimate knowledge" not in ROAST_PROMPT
+        assert ROAST_USER_PROMPT.count("{user_info}") == 1
+        assert "You have access to" in ROAST_USER_PROMPT

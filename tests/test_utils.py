@@ -205,14 +205,81 @@ class TestGetRankDescription:
 class TestUserPrompt:
     """Тесты для функции user_prompt."""
 
+    @pytest.mark.parametrize(
+        ("guild_id", "name", "expected_description"),
+        [
+            (123, "Alice", "описание первого сервера"),
+            (456, "Alice", "описание второго сервера"),
+            (123, "ForeignOnly", ""),
+            (123, "LegacyOnly", ""),
+            (789, "Alice", ""),
+            (999, "Alice", ""),
+            (None, "Alice", ""),
+            (None, "LegacyOnly", ""),
+            (123, "Empty", ""),
+            (123, "Blank", ""),
+            (123, "alice", ""),
+            (123, " Alice ", ""),
+        ],
+        ids=[
+            "first-guild",
+            "second-guild",
+            "foreign-only",
+            "no-global-fallback",
+            "unknown-guild",
+            "empty-guild",
+            "dm",
+            "dm-legacy",
+            "empty-description",
+            "whitespace-description",
+            "exact-case",
+            "exact-name",
+        ],
+    )
+    def test_author_description_is_current_guild_only(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        guild_id: int | None,
+        name: str,
+        expected_description: str,
+    ) -> None:
+        """Описание автора берётся только с текущего сервера и без пустых значений."""
+        from app.data import emoji_descriptions_cache, user_descriptions_cache
+
+        cache = {
+            0: {"Alice": "старое общее описание", "LegacyOnly": "старые общие данные"},
+            123: {"Alice": "описание первого сервера", "Empty": "", "Blank": " \t\n "},
+            456: {"Alice": "описание второго сервера", "ForeignOnly": "чужие данные"},
+            999: {},
+        }
+        original_cache = {guild: descriptions.copy() for guild, descriptions in cache.items()}
+        monkeypatch.setattr(user_descriptions_cache, "_cache", cache)
+        monkeypatch.setattr(emoji_descriptions_cache, "_cache", {})
+
+        result = user_prompt(name, guild_id=guild_id)
+
+        if expected_description:
+            assert result.count("Информация по пользователям") == 1
+            assert result.endswith(f"- {name}: {expected_description}")
+            other_description = (
+                "описание второго сервера" if guild_id == 123 else "описание первого сервера"
+            )
+            assert other_description not in result
+        else:
+            assert result == SYSTEM_PROMPT.format(emoji_section="", user_info="").strip()
+        assert "старое общее описание" not in result
+        assert "старые общие данные" not in result
+        assert "чужие данные" not in result
+        assert user_descriptions_cache._cache == original_cache
+
     def test_known_user(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Известный пользователь — промпт содержит описание."""
         from app.data import user_descriptions_cache
 
         monkeypatch.setattr(
-            user_descriptions_cache, "_cache", {0: {"atagaev": "Арби, создатель бота"}}
+            user_descriptions_cache, "_cache", {123: {"atagaev": "Арби, создатель бота"}}
         )
-        result = user_prompt("atagaev")
+        result = user_prompt("atagaev", guild_id=123)
         assert "atagaev" in result
         assert "Арби" in result
 
@@ -229,10 +296,10 @@ class TestUserPrompt:
         from app.data import user_descriptions_cache
 
         monkeypatch.setattr(
-            user_descriptions_cache, "_cache", {0: {"atagaev": "Арби, создатель бота"}}
+            user_descriptions_cache, "_cache", {123: {"atagaev": "Арби, создатель бота"}}
         )
-        assert isinstance(user_prompt("atagaev"), str)
-        assert isinstance(user_prompt("unknown"), str)
+        assert isinstance(user_prompt("atagaev", guild_id=123), str)
+        assert isinstance(user_prompt("unknown", guild_id=123), str)
 
     @pytest.mark.parametrize("name", ["atagaev", "unknown"], ids=["known-user", "unknown-user"])
     @pytest.mark.parametrize(
@@ -258,7 +325,13 @@ class TestUserPrompt:
         from app.data import emoji_descriptions_cache, user_descriptions_cache
 
         monkeypatch.setattr(
-            user_descriptions_cache, "_cache", {0: {"atagaev": "Арби, создатель бота"}}
+            user_descriptions_cache,
+            "_cache",
+            {
+                0: {"atagaev": "старое общее описание"},
+                123: {"atagaev": "Арби, создатель бота"},
+                789: {"atagaev": "Арби, создатель бота"},
+            },
         )
         monkeypatch.setattr(
             emoji_descriptions_cache,
@@ -304,7 +377,7 @@ class TestUserPrompt:
             assert "[e:" not in result
             assert "эмодзи" not in result
 
-        if name == "atagaev":
+        if name == "atagaev" and guild_id in (123, 789):
             assert result.count("Информация по пользователям") == 1
             assert result.count("- atagaev: Арби, создатель бота") == 1
         else:
@@ -442,6 +515,21 @@ class TestUserPrompt:
 
 class TestEnrichUsersContext:
     """Тесты для функции enrich_users_context."""
+
+    @pytest.mark.parametrize("description", ["", " ", "\t\n"])
+    def test_blank_descriptions_are_not_added(self, description: str) -> None:
+        """Пустые описания не превращают имена в пустые строки вида «Alice: »."""
+        contexts = ["Список пользователей сервера: Alice, Bob", "Обычная история"]
+        descriptions = {"Alice": description, "Bob": "описание Боба"}
+
+        result = enrich_users_context(contexts, descriptions)
+
+        assert result == [
+            "Список пользователей сервера: Alice; Bob: описание Боба",
+            "Обычная история",
+        ]
+        assert contexts == ["Список пользователей сервера: Alice, Bob", "Обычная история"]
+        assert descriptions == {"Alice": description, "Bob": "описание Боба"}
 
     def test_enriches_known_users(self) -> None:
         """Обогащает контекст описаниями известных пользователей."""
@@ -612,9 +700,7 @@ class TestReplaceEmojis:
 
     @pytest.mark.parametrize("marker_format", MALFORMED_FORMATS)
     @pytest.mark.parametrize("url_prefix", ["http://", "https://", "www.", "HTTPS://"])
-    def test_malformed_markers_in_urls_unchanged(
-        self, marker_format: str, url_prefix: str
-    ) -> None:
+    def test_malformed_markers_in_urls_unchanged(self, marker_format: str, url_prefix: str) -> None:
         """Маркеры внутри URL сохраняются, а отдельный маркер после ссылки заменяется."""
         marker = marker_format.format(name="Gachi1")
         url = f"{url_prefix}example.com/{marker}?tag={marker}#{marker}"
