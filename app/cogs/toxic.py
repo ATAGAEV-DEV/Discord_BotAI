@@ -5,7 +5,7 @@ from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUs
 from app.core.ai_config import get_client, get_model
 from app.core.bot import DisBot
 from app.data import user_descriptions_cache
-from app.tools.prompt import ROAST_PERSONAS, ROAST_PROMPT
+from app.tools.prompt import ROAST_PERSONAS, ROAST_PROMPT, ROAST_USER_PROMPT
 
 
 class Toxic(commands.Cog):
@@ -76,10 +76,17 @@ class Toxic(commands.Cog):
         messages.reverse()
         history_text = "\n".join(messages)
 
-        descriptions = user_descriptions_cache.get_all()
-        user_info_text = "\n".join([f"- {k}: {v}" for k, v in descriptions.items()])
+        descriptions = user_descriptions_cache.get(ctx.guild.id) if ctx.guild else {}
+        user_info_text = "\n".join(
+            f"- {nick}: {description}"
+            for nick, description in descriptions.items()
+            if description.strip()
+        )
+        user_section = (
+            ROAST_USER_PROMPT.format(user_info=user_info_text).strip() if user_info_text else ""
+        )
 
-        system_content = ROAST_PROMPT.format(user_info=user_info_text)
+        system_content = ROAST_PROMPT.format(user_section=user_section)
 
         if persona and persona in ROAST_PERSONAS:
             selected_persona = ROAST_PERSONAS[persona]
