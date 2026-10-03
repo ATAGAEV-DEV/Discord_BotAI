@@ -97,7 +97,7 @@ async def test_ai_generate_processes_context_and_response() -> None:
 
     with (
         patch("app.core.handlers.llama_manager") as mock_llama,
-        patch("app.core.handlers.user_prompt", return_value="system prompt"),
+        patch("app.core.handlers.user_prompt", return_value="system prompt") as mock_user_prompt,
         patch(
             "app.core.handlers.user_descriptions_cache.get_all",
             return_value={"Alice": "Алиса"},
@@ -135,6 +135,7 @@ async def test_ai_generate_processes_context_and_response() -> None:
         )
 
     assert result == "clean answer 😀"
+    mock_user_prompt.assert_called_once_with("Alice", 12345, emoji_ids={"smile": "100"})
     mock_llama.query_relevant_context.assert_awaited_once_with(12345, "Как дела?", limit=7)
     mock_enrich.assert_called_once_with(["raw context"], {"Alice": "Алиса"})
     mock_create.assert_awaited_once()
@@ -155,6 +156,110 @@ async def test_ai_generate_processes_context_and_response() -> None:
         ],
     )
     mock_create_task.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("known_user", [False, True], ids=["unknown-user", "known-user"])
+@pytest.mark.parametrize(
+    ("server_id", "emoji_ids", "expected_list"),
+    [
+        (123, {"Shared": "111", "NoDescription": "333"}, "[e:Shared] — первый сервер"),
+        (456, {"Shared": "222"}, "[e:Shared] — второй сервер"),
+        (123, {}, ""),
+        (123, None, ""),
+        (123, {"Shared": ""}, ""),
+        (123, {"NoDescription": "333"}, ""),
+        (123, {"shared": "111"}, ""),
+        (789, {"Shared": "111"}, ""),
+        (None, {}, ""),
+        (None, {"Shared": "111"}, ""),
+    ],
+    ids=[
+        "first-guild",
+        "second-guild",
+        "empty-ids",
+        "missing-ids",
+        "empty-id-value",
+        "no-matching-descriptions",
+        "case-mismatch",
+        "no-guild-descriptions",
+        "private-message",
+        "private-message-with-ids",
+    ],
+)
+async def test_ai_generate_sends_only_current_guild_emojis(
+    monkeypatch: pytest.MonkeyPatch,
+    server_id: int | None,
+    emoji_ids: dict[str, str] | None,
+    expected_list: str,
+    known_user: bool,
+) -> None:
+    """Настоящий системный промпт в запросе к AI содержит только доступные эмодзи сервера."""
+    from app.data import emoji_descriptions_cache, user_descriptions_cache
+
+    monkeypatch.setattr(
+        user_descriptions_cache, "_cache", {0: {"Alice": "описание автора"}} if known_user else {}
+    )
+    monkeypatch.setattr(
+        emoji_descriptions_cache,
+        "_cache",
+        {
+            123: {"Shared": "первый сервер", "Deleted": "устаревшее описание"},
+            456: {
+                "Shared": "второй сервер",
+                "Foreign": "чужой эмодзи",
+                "NoDescription": "описание только на другом сервере",
+            },
+        },
+    )
+    completion = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="Ответ."))]
+    )
+
+    with (
+        patch("app.core.handlers.llama_manager") as mock_llama,
+        patch("app.core.handlers.get_client") as mock_get_client,
+        patch("app.core.handlers.get_model", return_value="test-model"),
+        patch("app.core.handlers.asyncio.create_task") as mock_create_task,
+    ):
+        mock_llama.query_relevant_context = AsyncMock(return_value=[])
+        mock_llama.index_messages = AsyncMock()
+        mock_create_task.side_effect = lambda coroutine: coroutine.close()
+        mock_create = AsyncMock(return_value=completion)
+        mock_get_client.return_value.chat.completions.create = mock_create
+
+        result = await ai_generate("Как дела?", server_id, "Alice", emoji_ids=emoji_ids)
+
+    assert result == "Ответ."
+    mock_create.assert_awaited_once()
+    messages = mock_create.await_args.kwargs["messages"]
+    assert [message["role"] for message in messages] == ["system", "user"]
+    system_prompt = messages[0]["content"]
+    if expected_list:
+        assert system_prompt.count("Использовать только эмодзи сервера из списка ниже.") == 1
+        assert system_prompt.count("Правила формата эмодзи:") == 1
+        assert system_prompt.count("Доступные эмодзи:") == 1
+        emoji_list = (
+            system_prompt.split("Доступные эмодзи:", 1)[1]
+            .split("Информация по пользователям", 1)[0]
+            .strip()
+        )
+        assert emoji_list == expected_list
+    else:
+        assert "эмодзи" not in system_prompt
+        assert "[e:" not in system_prompt
+
+    if known_user:
+        assert system_prompt.count("Информация по пользователям") == 1
+        assert system_prompt.count("- Alice: описание автора") == 1
+    else:
+        assert "Информация по пользователям" not in system_prompt
+
+    assert "{emoji_section}" not in system_prompt
+    assert "{emoji_list}" not in system_prompt
+    assert "{user_info}" not in system_prompt
+    assert messages[1]["content"] == "[Пользователь: Alice] Как дела?"
+    mock_llama.query_relevant_context.assert_awaited_once_with(server_id, "Как дела?", limit=15)
 
 
 @pytest.mark.asyncio

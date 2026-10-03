@@ -1,8 +1,10 @@
 """Unit-тесты для app/tools/utils.py."""
 
+from typing import ClassVar
+
 import pytest
 
-from app.tools.prompt import RANK_NAMES
+from app.tools.prompt import RANK_NAMES, SYSTEM_PROMPT
 from app.tools.utils import (
     chunk_message,
     contains_only_urls,
@@ -233,11 +235,26 @@ class TestUserPrompt:
         assert isinstance(user_prompt("unknown"), str)
 
     @pytest.mark.parametrize("name", ["atagaev", "unknown"], ids=["known-user", "unknown-user"])
-    @pytest.mark.parametrize("guild_id", [None, 123], ids=["fallback", "guild-emojis"])
-    def test_emoji_format_rules_survive_prompt_rendering(
-        self, monkeypatch: pytest.MonkeyPatch, name: str, guild_id: int | None
+    @pytest.mark.parametrize(
+        ("guild_id", "emoji_ids", "has_emojis"),
+        [
+            (None, {"ServerLaugh42": "111"}, False),
+            (123, {"ServerLaugh42": "111"}, True),
+            (123, {}, False),
+            (123, None, False),
+            (789, {"ServerLaugh42": "111"}, False),
+        ],
+        ids=["private-message", "guild-emojis", "empty-ids", "missing-ids", "no-descriptions"],
+    )
+    def test_optional_emoji_section_is_independent_of_user_info(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        name: str,
+        guild_id: int | None,
+        emoji_ids: dict[str, str] | None,
+        has_emojis: bool,
     ) -> None:
-        """Правила эмодзи сохраняются при подстановке списка и удалении пустого user_info."""
+        """Правила появляются только с доступным списком, независимо от описания пользователя."""
         from app.data import emoji_descriptions_cache, user_descriptions_cache
 
         monkeypatch.setattr(
@@ -252,43 +269,52 @@ class TestUserPrompt:
             },
         )
 
-        result = user_prompt(name, guild_id=guild_id)
+        result = user_prompt(name, guild_id=guild_id, emoji_ids=emoji_ids)
 
         required_rules = (
-            "4. Использовать только эмодзи сервера из списка ниже.",
+            "Использовать только эмодзи сервера из списка ниже.",
+            "Правила формата эмодзи:",
             "Копируй тег из списка точно: [e:ИМЯ], где ИМЯ — имя выбранного эмодзи.",
             "Обязательно сохраняй обе квадратные скобки, префикс e: и регистр имени.",
-            "Правильный пример: Ну и отлично [e:Gachi1]",
-            "Неправильные варианты: :e:Gachi1, :Gachi1:, e:Gachi1.",
+            "Правильный пример: Ну и отлично [e:ИМЯ]",
+            "Неправильные варианты: :e:ИМЯ, :ИМЯ:, e:ИМЯ.",
             "Не копируй неправильное написание эмодзи из истории сообщений.",
-            "Перед выдачей ответа проверь, что каждый использованный тег "
-            "точно совпадает с тегом из списка.",
+            (
+                "Перед выдачей ответа проверь, что каждый использованный тег "
+                "точно совпадает с тегом из списка."
+            ),
             "Доступные эмодзи:",
         )
         for rule in required_rules:
-            assert rule in result
+            assert result.count(rule) == (1 if has_emojis else 0)
 
+        assert "{emoji_section}" not in result
         assert "{emoji_list}" not in result
         assert "{user_info}" not in result
-        assert "[e:Gachi1] — смех" in result
+        assert "Gachi1" not in result
         assert "[e:ForeignEmoji]" not in result
+        assert "\n4. " not in result
+        assert "\n5. " not in result
+        assert "\n\n" not in result
+        assert result == result.strip()
 
-        if guild_id is None:
-            assert "[e:ServerLaugh42]" not in result
+        if has_emojis:
+            assert result.count("[e:ServerLaugh42] — серверный смех") == 1
         else:
-            assert "[e:ServerLaugh42] — серверный смех" in result
+            assert "[e:" not in result
+            assert "эмодзи" not in result
 
         if name == "atagaev":
-            assert "5. Информация по пользователям" in result
-            assert "- atagaev: Арби, создатель бота" in result
+            assert result.count("Информация по пользователям") == 1
+            assert result.count("- atagaev: Арби, создатель бота") == 1
         else:
-            assert "5. " not in result
+            assert "Информация по пользователям" not in result
             assert "Арби" not in result
 
-    def test_guild_emoji_description_overrides_fallback(
+    def test_guild_emoji_description_without_global_fallback(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Описание эмодзи из БД сервера заменяет одноимённый fallback."""
+        """Список содержит только серверное описание, без прежних общих описаний."""
         from app.data import emoji_descriptions_cache, user_descriptions_cache
 
         monkeypatch.setattr(user_descriptions_cache, "_cache", {})
@@ -296,28 +322,119 @@ class TestUserPrompt:
             emoji_descriptions_cache, "_cache", {123: {"yoba": "локальное описание"}}
         )
 
-        result = user_prompt("unknown", guild_id=123)
+        result = user_prompt("unknown", guild_id=123, emoji_ids={"yoba": "111", "Gachi1": "222"})
 
-        assert "[e:yoba] — локальное описание" in result
-        assert "[e:Gachi1] — смех" in result
+        assert result.split("Доступные эмодзи:", 1)[1].strip() == "[e:yoba] — локальное описание"
 
+    @pytest.mark.parametrize(
+        ("guild_id", "expected_description"), [(123, "сервер один"), (456, "сервер два")]
+    )
     def test_guild_emoji_descriptions_are_isolated(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, guild_id: int, expected_description: str
     ) -> None:
-        """Описание эмодзи другого сервера не попадает в prompt."""
+        """Одноимённые эмодзи получают описание только текущего сервера."""
         from app.data import emoji_descriptions_cache, user_descriptions_cache
 
         monkeypatch.setattr(user_descriptions_cache, "_cache", {})
         monkeypatch.setattr(
             emoji_descriptions_cache,
             "_cache",
-            {123: {"yoba": "сервер один"}, 456: {"yoba": "сервер два"}},
+            {
+                123: {"yoba": "сервер один", "FirstOnly": "только первый"},
+                456: {"yoba": "сервер два", "SecondOnly": "только второй"},
+            },
         )
 
-        result = user_prompt("unknown", guild_id=123)
+        result = user_prompt("unknown", guild_id=guild_id, emoji_ids={"yoba": str(guild_id)})
 
-        assert "сервер один" in result
-        assert "сервер два" not in result
+        emoji_list = result.split("Доступные эмодзи:", 1)[1].strip()
+        assert emoji_list == f"[e:yoba] — {expected_description}"
+
+    def test_only_described_emojis_with_matching_ids_are_listed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Удалённые эмодзи, пустые ID, иной регистр и отсутствие описания исключаются."""
+        from app.data import emoji_descriptions_cache, user_descriptions_cache
+
+        descriptions = {
+            "Available": "доступный эмодзи",
+            "Deleted": "удалённый эмодзи",
+            "EmptyId": "нет ID",
+            "CaseSensitive": "регистр важен",
+        }
+        emoji_ids = {"Available": "111", "EmptyId": "", "New": "222", "casesensitive": "333"}
+        monkeypatch.setattr(user_descriptions_cache, "_cache", {})
+        monkeypatch.setattr(emoji_descriptions_cache, "_cache", {123: descriptions.copy()})
+
+        result = user_prompt("unknown", guild_id=123, emoji_ids=emoji_ids.copy())
+
+        assert result.split("Доступные эмодзи:", 1)[1].strip() == "[e:Available] — доступный эмодзи"
+        assert emoji_descriptions_cache.get(123) == descriptions
+
+    @pytest.mark.parametrize(
+        ("guild_id", "emoji_ids"),
+        [
+            (123, None),
+            (123, {}),
+            (123, {"ServerLaugh42": ""}),
+            (123, {"serverlaugh42": "111"}),
+            (123, {"Undescribed": "222"}),
+            (789, {"ServerLaugh42": "111"}),
+            (999, {"ServerLaugh42": "111"}),
+            (None, {"ServerLaugh42": "111"}),
+            (None, None),
+        ],
+        ids=[
+            "missing-ids",
+            "empty-ids",
+            "empty-id-value",
+            "case-mismatch",
+            "no-matching-descriptions",
+            "no-guild-descriptions",
+            "empty-guild-descriptions",
+            "dm-with-ids",
+            "dm",
+        ],
+    )
+    def test_missing_server_data_omits_entire_emoji_section(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        guild_id: int | None,
+        emoji_ids: dict[str, str] | None,
+    ) -> None:
+        """Без подходящих серверных данных нет ни правил, ни списка, ни общего fallback."""
+        from app.data import emoji_descriptions_cache, user_descriptions_cache
+
+        monkeypatch.setattr(user_descriptions_cache, "_cache", {})
+        monkeypatch.setattr(
+            emoji_descriptions_cache,
+            "_cache",
+            {
+                0: {"ServerLaugh42": "старое общее описание"},
+                123: {"ServerLaugh42": "серверный смех"},
+                456: {"ForeignEmoji": "чужой смех"},
+                999: {},
+            },
+        )
+
+        result = user_prompt("unknown", guild_id=guild_id, emoji_ids=emoji_ids)
+
+        assert result == SYSTEM_PROMPT.format(emoji_section="", user_info="").strip()
+        assert "эмодзи" not in result
+        assert "[e:" not in result
+
+    def test_empty_description_cache_has_no_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Пустой кэш не дополняется описаниями даже для имён из прежнего общего списка."""
+        from app.data import emoji_descriptions_cache, user_descriptions_cache
+
+        monkeypatch.setattr(user_descriptions_cache, "_cache", {})
+        monkeypatch.setattr(emoji_descriptions_cache, "_cache", {})
+
+        result = user_prompt("unknown", guild_id=123, emoji_ids={"yoba": "111", "Gachi1": "222"})
+
+        assert result == SYSTEM_PROMPT.format(emoji_section="", user_info="").strip()
+        assert "эмодзи" not in result
+        assert "[e:" not in result
 
 
 # ── enrich_users_context ────────────────────────────────────────
@@ -357,8 +474,11 @@ class TestEnrichUsersContext:
 class TestReplaceEmojis:
     """Тесты для функции replace_emojis."""
 
-    EMOJI_IDS = {"yoba": "1101900451852599427", "Gachi1": "469464559959277578"}
-    MALFORMED_FORMATS = [":e:{name}", ":{name}:", "e:{name}"]
+    EMOJI_IDS: ClassVar[dict[str, str]] = {
+        "yoba": "1101900451852599427",
+        "Gachi1": "469464559959277578",
+    }
+    MALFORMED_FORMATS: ClassVar[list[str]] = [":e:{name}", ":{name}:", "e:{name}"]
 
     def test_replaces_known_emoji(self) -> None:
         """Известный эмодзи заменяется на Discord-формат."""
