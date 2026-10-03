@@ -11,6 +11,7 @@ from app.tools.utils import (
     count_tokens,
     enrich_users_context,
     replace_emojis,
+    resolve_user_mentions,
     strip_emoji,
     user_prompt,
 )
@@ -51,15 +52,29 @@ async def ai_generate(
     name: str,
     limit: int = 15,
     emoji_ids: dict[str, str] | None = None,
+    *,
+    mentions: dict[int, str] | None = None,
 ) -> str:
-    """Генерирует ответ от AI с глобальным таймаутом."""
+    """Генерирует ответ с контекстом упомянутых аккаунтов и глобальным таймаутом."""
 
     async def _generate_inner() -> str:
         """Внутренняя функция генерации (без таймаута)."""
+        resolved_text, mentioned_names = resolve_user_mentions(text, mentions)
         messages = [
-            {"role": "system", "content": user_prompt(f"{name}", server_id, emoji_ids=emoji_ids)}
+            {
+                "role": "system",
+                "content": user_prompt(
+                    f"{name}",
+                    server_id,
+                    emoji_ids=emoji_ids,
+                    text=text,
+                    mentioned_names=mentioned_names,
+                ),
+            }
         ]
-        relevant_contexts = await llama_manager.query_relevant_context(server_id, text, limit=limit)
+        relevant_contexts = await llama_manager.query_relevant_context(
+            server_id, resolved_text, limit=limit
+        )
         descriptions = user_descriptions_cache.get(server_id) if server_id is not None else {}
         relevant_contexts = enrich_users_context(relevant_contexts, descriptions)
 
@@ -72,7 +87,7 @@ async def ai_generate(
             }
             messages.append(context_message)
 
-        user_msg = {"role": "user", "content": f"[Пользователь: {name}] {text}"}
+        user_msg = {"role": "user", "content": f"[Пользователь: {name}] {resolved_text}"}
         messages.append(user_msg)
 
         openai_messages = []
@@ -102,7 +117,7 @@ async def ai_generate(
         cleaned_response_text = replace_emojis(cleaned_response_text, emoji_ids or {})
 
         messages_to_index = [
-            {"role": "user", "content": f"[Пользователь: {name}] {text}"},
+            user_msg,
             {"role": "assistant", "content": strip_emoji(cleaned_response_text)},
         ]
         asyncio.create_task(llama_manager.index_messages(server_id, messages_to_index))
