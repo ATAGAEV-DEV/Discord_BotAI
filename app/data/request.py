@@ -149,7 +149,11 @@ async def save_user_description(
     existing = result.scalar_one_or_none()
 
     if existing:
-        existing.description = description
+        await session.execute(
+            update(UserDescription)
+            .where(UserDescription.nick == nick, UserDescription.guild_id == guild_id)
+            .values(description=description)
+        )
         action = "обновлено"
     else:
         new_entry = UserDescription(nick=nick, description=description, guild_id=guild_id)
