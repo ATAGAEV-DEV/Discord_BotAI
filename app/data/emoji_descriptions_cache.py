@@ -1,5 +1,5 @@
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.decorators import db_operation
@@ -35,7 +35,11 @@ async def save(session: AsyncSession, name: str, description: str, guild_id: int
     existing = result.scalar_one_or_none()
 
     if existing:
-        existing.description = description
+        await session.execute(
+            update(GuildEmoji)
+            .where(GuildEmoji.name == name, GuildEmoji.guild_id == guild_id)
+            .values(description=description)
+        )
         action = "обновлено"
     else:
         session.add(GuildEmoji(name=name, description=description, guild_id=guild_id))
