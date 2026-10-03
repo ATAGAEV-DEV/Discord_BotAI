@@ -48,11 +48,13 @@ def mock_ctx() -> MagicMock:
     ctx = MagicMock(spec=commands.Context)
     ctx.author = MagicMock(spec=discord.Member)
     ctx.author.id = 12345
+    ctx.author.name = "test_user"
     ctx.author.mention = "<@12345>"
     ctx.guild = MagicMock(spec=discord.Guild)
     ctx.guild.id = 67890
     ctx.message = MagicMock(spec=discord.Message)
     ctx.message.content = "!Вопрос с пробелами?"
+    ctx.message.mentions = []
     ctx.command = MagicMock(spec=commands.Command)
     ctx.command.name = "search"
     ctx.command.signature = "<query>"
@@ -173,7 +175,12 @@ async def test_unknown_command_generates_response_inside_typing(
     await error_cog.on_command_error(mock_ctx, commands.CommandNotFound())
 
     ai_generate.assert_awaited_once_with(
-        "!Вопрос с пробелами?", guild_id, mock_ctx.author, limit=17, emoji_ids=expected_emojis
+        "!Вопрос с пробелами?",
+        guild_id,
+        "test_user",
+        limit=17,
+        emoji_ids=expected_emojis,
+        mentions={},
     )
     mock_ctx.send.assert_awaited_once_with("<@12345> Ответ AI.\nВторая строка.")
     mock_ctx.typing.assert_called_once_with()
@@ -184,9 +191,48 @@ async def test_unknown_command_generates_response_inside_typing(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("elapsed", "remaining"), [(0.0, "5"), (1.4, "4"), (4.9, "0")]
-)
+@pytest.mark.parametrize("guild_id", [67890, None], ids=["guild", "dm"])
+async def test_unknown_command_passes_account_names_from_message_mentions(
+    error_cog: error_handler.ErrorHandler,
+    mock_ctx: MagicMock,
+    ai_generate: AsyncMock,
+    guild_id: int | None,
+) -> None:
+    """ID разрешаются через message.mentions, без display_name, str(user) и обхода сервера."""
+    if guild_id is None:
+        mock_ctx.guild = None
+    mock_ctx.author.nick = "Автор на сервере"
+    mock_ctx.author.display_name = "Отображаемый автор"
+    mock_ctx.author.global_name = "Глобальное имя автора"
+    mock_ctx.author.__str__.return_value = "test_user#1234"
+    mentioned = MagicMock(spec=discord.Member)
+    mentioned.id = 54321
+    mentioned.name = "account.username"
+    mentioned.nick = "Ник на сервере"
+    mentioned.display_name = "Отображаемое имя"
+    mentioned.global_name = "Глобальное имя"
+    mentioned.__str__.return_value = "account.username#5678"
+    mock_ctx.message.content = "!Кто такой <@54321> и <@!54321>?"
+    mock_ctx.message.mentions = [mentioned, mentioned, mock_ctx.author]
+
+    await error_cog.on_command_error(mock_ctx, commands.CommandNotFound())
+
+    ai_generate.assert_awaited_once_with(
+        mock_ctx.message.content,
+        guild_id,
+        "test_user",
+        limit=17,
+        emoji_ids=error_cog.bot.guild_emoji_ids[67890] if guild_id else {},
+        mentions={54321: "account.username", 12345: "test_user"},
+    )
+    mentioned.__str__.assert_not_called()
+    mock_ctx.author.__str__.assert_not_called()
+    if mock_ctx.guild is not None:
+        assert mock_ctx.guild.mock_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("elapsed", "remaining"), [(0.0, "5"), (1.4, "4"), (4.9, "0")])
 async def test_ai_cooldown_blocks_without_updating_timestamp(
     error_cog: error_handler.ErrorHandler,
     mock_ctx: MagicMock,
@@ -271,13 +317,14 @@ async def test_ai_cooldowns_are_independent_for_users(
 
     second_author = MagicMock(spec=discord.Member)
     second_author.id = 54321
+    second_author.name = "second_user"
     second_author.mention = "<@54321>"
     mock_ctx.author = second_author
     await error_cog.on_command_error(mock_ctx, commands.CommandNotFound())
 
     assert ai_generate.await_count == 2
-    assert ai_generate.await_args_list[0].args[2] is first_author
-    assert ai_generate.await_args_list[1].args[2] is second_author
+    assert ai_generate.await_args_list[0].args[2] == first_author.name
+    assert ai_generate.await_args_list[1].args[2] == second_author.name
     assert mock_ctx.send.await_args_list == [call("<@12345> Ответ AI."), call("<@54321> Ответ AI.")]
     assert monotonic.call_count == 2
     assert error_cog._ai_cooldowns == {12345: 100.0, 54321: 100.0}

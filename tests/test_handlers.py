@@ -135,7 +135,9 @@ async def test_ai_generate_processes_context_and_response() -> None:
         )
 
     assert result == "clean answer 😀"
-    mock_user_prompt.assert_called_once_with("Alice", 12345, emoji_ids={"smile": "100"})
+    mock_user_prompt.assert_called_once_with(
+        "Alice", 12345, emoji_ids={"smile": "100"}, text="Как дела?", mentioned_names=[]
+    )
     mock_descriptions.assert_called_once_with(12345)
     mock_llama.query_relevant_context.assert_awaited_once_with(12345, "Как дела?", limit=7)
     mock_enrich.assert_called_once_with(["raw context"], {"Alice": "Алиса"})
@@ -376,6 +378,129 @@ async def test_ai_generate_isolates_descriptions_in_both_system_messages(
     assert "Blank:" not in all_system_content
     assert user_descriptions_cache._cache == original_cache
     assert messages[-1]["content"] == "[Пользователь: Alice] Как дела?"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mention_form", ["native", "nickname-native", "literal", "mixed"])
+@pytest.mark.parametrize("has_context", [False, True], ids=["empty-history", "with-history"])
+@pytest.mark.parametrize(
+    ("server_id", "expected_user_lines"),
+    [
+        (123, ["- Alice: автор первого сервера", "- Ded: Дед первого сервера"]),
+        (
+            456,
+            [
+                "- Alice: автор второго сервера",
+                "- Ded: Дед второго сервера",
+                "- ForeignOnly: пользователь второго сервера",
+            ],
+        ),
+        (789, []),
+        (999, []),
+        (None, []),
+    ],
+    ids=["first-guild", "second-guild", "missing-guild", "empty-guild", "dm"],
+)
+async def test_ai_generate_resolves_mentions_and_uses_guild_descriptions_without_history(
+    monkeypatch: pytest.MonkeyPatch,
+    server_id: int | None,
+    expected_user_lines: list[str],
+    has_context: bool,
+    mention_form: str,
+) -> None:
+    """Настоящий prompt получает описания упоминаний независимо от RAG и без утечки."""
+    from app.data import emoji_descriptions_cache, user_descriptions_cache
+
+    cache = {
+        0: {
+            "Alice": "общее описание автора",
+            "Ded": "общее описание Деда",
+            "LegacyOnly": "старые общие данные",
+            "NoDescription": "общее описание без серверного",
+        },
+        123: {
+            "Alice": "автор первого сервера",
+            "Ded": "Дед первого сервера",
+            "Empty": "",
+            "Blank": " \t\n ",
+            "MetadataOnly": "пользователь вне текста",
+            "99999": "неизвестный ID не является username",
+        },
+        456: {
+            "Alice": "автор второго сервера",
+            "Ded": "Дед второго сервера",
+            "ForeignOnly": "пользователь второго сервера",
+        },
+        999: {},
+    }
+    original_cache = {guild_id: descriptions.copy() for guild_id, descriptions in cache.items()}
+    monkeypatch.setattr(user_descriptions_cache, "_cache", cache)
+    monkeypatch.setattr(emoji_descriptions_cache, "_cache", {})
+    token = {
+        "native": "<@321>",
+        "nickname-native": "<@!321>",
+        "literal": "@Ded",
+        "mixed": "<@321> @Ded",
+    }[mention_form]
+    no_description_token = "@NoDescription" if mention_form == "literal" else "<@987>"
+    suffix = "@Alice @Empty @Blank @ForeignOnly @LegacyOnly @Unknown <@99999> <@&321> <#321>"
+    text = f"Кто такой {token}, {token}? {no_description_token} {suffix}"
+    resolved_token = "@Ded @Ded" if mention_form == "mixed" else "@Ded"
+    expected_text = f"Кто такой {resolved_token}, {resolved_token}? @NoDescription {suffix}"
+    mentions = (
+        {} if mention_form == "literal" else {321: "Ded", 987: "NoDescription", 1: "MetadataOnly"}
+    )
+    completion = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="Ответ."))]
+    )
+
+    with (
+        patch("app.core.handlers.llama_manager") as mock_llama,
+        patch("app.core.handlers.get_client") as mock_get_client,
+        patch("app.core.handlers.get_model", return_value="test-model"),
+        patch("app.core.handlers.asyncio.create_task") as mock_create_task,
+    ):
+        mock_llama.query_relevant_context = AsyncMock(
+            return_value=["Обычная история"] if has_context else []
+        )
+        mock_llama.index_messages = AsyncMock()
+        mock_create_task.side_effect = lambda coroutine: coroutine.close()
+        mock_create = AsyncMock(return_value=completion)
+        mock_get_client.return_value.chat.completions.create = mock_create
+
+        result = await ai_generate(text, server_id, "Alice", limit=7, mentions=mentions)
+
+    assert result == "Ответ."
+    mock_create.assert_awaited_once()
+    messages = mock_create.await_args.kwargs["messages"]
+    assert [message["role"] for message in messages] == (
+        ["system", "system", "user"] if has_context else ["system", "user"]
+    )
+    system_prompt = messages[0]["content"]
+    assert [line for line in system_prompt.splitlines() if line.startswith("- ")] == (
+        expected_user_lines
+    )
+    if expected_user_lines:
+        assert system_prompt.count("Информация по пользователям") == 1
+    else:
+        assert "Информация по пользователям" not in system_prompt
+    for excluded in ("Empty", "Blank", "LegacyOnly", "Unknown", "NoDescription", "MetadataOnly"):
+        assert excluded not in system_prompt
+    assert "неизвестный ID" not in system_prompt
+    assert "общее описание" not in system_prompt
+    if has_context:
+        assert messages[1]["content"] == (
+            "Релевантный контекст из истории сервера:\nОбычная история"
+        )
+    expected_user_message = {"role": "user", "content": f"[Пользователь: Alice] {expected_text}"}
+    assert messages[-1] == expected_user_message
+    mock_llama.query_relevant_context.assert_awaited_once_with(server_id, expected_text, limit=7)
+    mock_llama.index_messages.assert_called_once_with(
+        server_id,
+        [expected_user_message, {"role": "assistant", "content": "Ответ."}],
+    )
+    mock_create_task.assert_called_once()
+    assert user_descriptions_cache._cache == original_cache
 
 
 @pytest.mark.asyncio

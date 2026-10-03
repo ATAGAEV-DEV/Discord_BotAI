@@ -13,6 +13,7 @@ from app.tools.utils import (
     enrich_users_context,
     get_rank_description,
     replace_emojis,
+    resolve_user_mentions,
     strip_emoji,
     user_prompt,
 )
@@ -199,11 +200,180 @@ class TestGetRankDescription:
             assert "description" in rank
 
 
+# ── resolve_user_mentions ───────────────────────────────────────
+
+
+class TestResolveUserMentions:
+    """Разрешение нативных упоминаний без Discord API и кэша описаний."""
+
+    @pytest.mark.parametrize(
+        ("text", "expected_text", "expected_names"),
+        [
+            ("Привет <@123>", "Привет @Ded", ["Ded"]),
+            ("Привет <@!123>", "Привет @Ded", ["Ded"]),
+            ("<@123> <@!123> <@123>", "@Ded @Ded @Ded", ["Ded"]),
+            ("<@456> <@123>", "@user.name @Ded", ["user.name", "Ded"]),
+            ("<@123><@456>", "@Ded@user.name", ["Ded", "user.name"]),
+            ("@Ded и <@123>", "@Ded и @Ded", ["Ded"]),
+            ("<@999> <@123>", "<@999> @Ded", ["Ded"]),
+            ("<@&123> <#123> <:Ded:123>", "<@&123> <#123> <:Ded:123>", []),
+            ("<@abc> <@!> <@123", "<@abc> <@!> <@123", []),
+            ("<@777>", "<@777>", []),
+            ("Без упоминаний", "Без упоминаний", []),
+            ("", "", []),
+        ],
+    )
+    def test_resolves_only_native_user_tokens(
+        self, text: str, expected_text: str, expected_names: list[str]
+    ) -> None:
+        """Обе формы разрешаются, имена уникальны и сохраняют порядок в тексте."""
+        mentions = {123: "Ded", 456: "user.name", 777: "", 888: "MetadataOnly"}
+        original_mentions = mentions.copy()
+
+        assert resolve_user_mentions(text, mentions) == (expected_text, expected_names)
+        assert mentions == original_mentions
+
+    @pytest.mark.parametrize("mentions", [None, {}])
+    def test_missing_identities_leave_text_unchanged(self, mentions: dict[int, str] | None) -> None:
+        """Без данных message.mentions нет догадок об именах по ID."""
+        text = "<@123> <@!456> @Ded"
+
+        assert resolve_user_mentions(text, mentions) == (text, [])
+
+
 # ── user_prompt ─────────────────────────────────────────────────
 
 
 class TestUserPrompt:
     """Тесты для функции user_prompt."""
+
+    @pytest.mark.parametrize(
+        ("text", "expected_name"),
+        [
+            ("@Ded", "Ded"),
+            ("Привет, @Ded!", "Ded"),
+            ("(@Ded), как дела?", "Ded"),
+            ("@Ded\n@Ded", "Ded"),
+            ("@DedSuffix", "DedSuffix"),
+            ("@ded.other", "ded.other"),
+            ("@user_name", "user_name"),
+            ("@Legacy#1234", "Legacy#1234"),
+            ("@ded", ""),
+            ("@DED", ""),
+            ("@DedLong", ""),
+            ("@Ded.other", ""),
+            ("@Ded_other", ""),
+            ("@Ded-other", ""),
+            ("@Ded#1234", ""),
+            ("Ded", ""),
+            ("@Unknown", ""),
+            ("word@Ded", ""),
+            ("mail@Ded.example", ""),
+            ("@@Ded", ""),
+            ("https://example.com/?user=@Ded", ""),
+            ("www.example.com/@Ded", ""),
+            ("<@123> <@!123> <@&123> <#123>", ""),
+        ],
+    )
+    def test_literal_mentions_require_exact_cached_username(
+        self, monkeypatch: pytest.MonkeyPatch, text: str, expected_name: str
+    ) -> None:
+        """Регистр и полное имя значимы; подстроки, URL, email и raw ID не подходят."""
+        from app.data import emoji_descriptions_cache, user_descriptions_cache
+
+        descriptions = {
+            "Ded": "описание Деда",
+            "DedSuffix": "другой пользователь",
+            "ded.other": "имя с точкой",
+            "user_name": "имя с подчёркиванием",
+            "Legacy#1234": "точный старый ключ",
+            "123": "ключ похож на ID",
+        }
+        monkeypatch.setattr(user_descriptions_cache, "_cache", {123: descriptions.copy()})
+        monkeypatch.setattr(emoji_descriptions_cache, "_cache", {})
+
+        result = user_prompt("Alice", 123, text=text)
+
+        if expected_name:
+            assert result.count("Информация по пользователям") == 1
+            assert result.endswith(f"- {expected_name}: {descriptions[expected_name]}")
+            assert result.count(f"- {expected_name}:") == 1
+        else:
+            assert result == SYSTEM_PROMPT.format(emoji_section="", user_info="").strip()
+        for username, description in descriptions.items():
+            if username != expected_name:
+                assert description not in result
+        assert user_descriptions_cache._cache == {123: descriptions}
+
+    @pytest.mark.parametrize(
+        ("guild_id", "expected_description"),
+        [(123, "первый сервер"), (456, "второй сервер"), (789, ""), (999, ""), (None, "")],
+    )
+    @pytest.mark.parametrize("native", [False, True], ids=["literal", "resolved-native"])
+    def test_mentioned_descriptions_are_guild_scoped(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        guild_id: int | None,
+        expected_description: str,
+        native: bool,
+    ) -> None:
+        """Описания упоминаний не переносятся с другого сервера, из guild 0 или в DM."""
+        from app.data import emoji_descriptions_cache, user_descriptions_cache
+
+        monkeypatch.setattr(
+            user_descriptions_cache,
+            "_cache",
+            {
+                0: {"Ded": "общее описание", "LegacyOnly": "старое описание"},
+                123: {"Ded": "первый сервер"},
+                456: {"Ded": "второй сервер"},
+                999: {},
+            },
+        )
+        monkeypatch.setattr(emoji_descriptions_cache, "_cache", {})
+
+        result = user_prompt(
+            "Alice",
+            guild_id,
+            text="<@321>" if native else "@Ded @LegacyOnly",
+            mentioned_names=["Ded", "LegacyOnly"] if native else None,
+        )
+
+        if expected_description:
+            assert result.endswith(f"- Ded: {expected_description}")
+            assert result.count("- Ded:") == 1
+        else:
+            assert result == SYSTEM_PROMPT.format(emoji_section="", user_info="").strip()
+        assert "общее описание" not in result
+        assert "старое описание" not in result
+
+    def test_author_and_mentions_are_deduplicated_without_blank_descriptions(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Самоупоминания, две формы и повторы не дублируют непустые описания."""
+        from app.data import emoji_descriptions_cache, user_descriptions_cache
+
+        monkeypatch.setattr(
+            user_descriptions_cache,
+            "_cache",
+            {123: {"Alice": "автор", "Ded": "упомянутый", "Empty": "", "Blank": " \t\n "}},
+        )
+        monkeypatch.setattr(emoji_descriptions_cache, "_cache", {})
+        mentioned_names = ["Ded", "Alice", "Ded", "Empty", "Blank", "Unknown"]
+
+        result = user_prompt(
+            "Alice",
+            123,
+            text="@Ded @Alice @Ded @Empty @Blank @Unknown",
+            mentioned_names=mentioned_names,
+        )
+
+        assert result.count("Информация по пользователям") == 1
+        assert result.endswith("- Alice: автор\n- Ded: упомянутый")
+        assert result.count("- Alice:") == result.count("- Ded:") == 1
+        for username in ("Empty", "Blank", "Unknown"):
+            assert username not in result
+        assert mentioned_names == ["Ded", "Alice", "Ded", "Empty", "Blank", "Unknown"]
 
     @pytest.mark.parametrize(
         ("guild_id", "name", "expected_description"),
