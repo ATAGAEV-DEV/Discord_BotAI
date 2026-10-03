@@ -25,6 +25,7 @@ def replace_emojis(text: str, emoji_ids: dict[str, str]) -> str:
     слов, URL и готовых Discord-эмодзи не нормализуются.
     Правильный тег [e:name] без ID удаляется, как и раньше.
     """
+
     def _normalize(match: re.Match[str]) -> str:
         """Нормализует только отдельные ошибочные маркеры из серверного кэша."""
         if match.group("protected") is not None:
@@ -52,13 +53,12 @@ def user_prompt(
 ) -> str:
     """Формирует системный prompt с данными текущего сервера.
 
-    В список попадают только описания этого сервера с непустым ID в ``emoji_ids``.
-    Без ``guild_id``, серверных описаний или ID блок эмодзи не добавляется.
+    Непустое описание автора добавляется при точном совпадении имени на этом сервере,
+    независимо от истории и эмодзи. Без ``guild_id`` описания пользователей не добавляются.
+    В список эмодзи попадают только описания этого сервера с непустым ID в ``emoji_ids``.
     """
-    descriptions = user_descriptions_cache.get_all()
-    emoji_descriptions = (
-        emoji_descriptions_cache.get(guild_id) if guild_id is not None else {}
-    )
+    descriptions = user_descriptions_cache.get(guild_id) if guild_id is not None else {}
+    emoji_descriptions = emoji_descriptions_cache.get(guild_id) if guild_id is not None else {}
 
     emoji_ids = emoji_ids or {}
     emoji_list = "\n".join(
@@ -66,23 +66,22 @@ def user_prompt(
         for emoji_name, description in emoji_descriptions.items()
         if emoji_ids.get(emoji_name)
     )
-    emoji_section = (
-        EMOJI_PROMPT.format(emoji_list=emoji_list).strip() + "\n" if emoji_list else ""
-    )
+    emoji_section = EMOJI_PROMPT.format(emoji_list=emoji_list).strip() + "\n" if emoji_list else ""
 
     user_info = ""
-    if str(name).strip() in descriptions:
+    description = descriptions.get(name, "")
+    if description.strip():
         user_info = (
             "Информация по пользователям с name (они должны совпадать побуквенно, "
             "иначе это другой юзер). Но не упоминать об этом постоянно:"
-            f"\n- {name}: {descriptions[name]}"
+            f"\n- {name}: {description}"
         )
 
     return SYSTEM_PROMPT.format(emoji_section=emoji_section, user_info=user_info).strip()
 
 
-def enrich_users_context(contexts: list[str], user_descriptions: dict) -> list[str]:
-    """Обогащает контекст информацией о пользователях из USER_DESCRIPTIONS."""
+def enrich_users_context(contexts: list[str], user_descriptions: dict[str, str]) -> list[str]:
+    """Обогащает контекст непустыми описаниями пользователей текущего сервера."""
     new_contexts = []
 
     for context in contexts:
@@ -92,8 +91,9 @@ def enrich_users_context(contexts: list[str], user_descriptions: dict) -> list[s
 
             enriched_users = []
             for user in users_list:
-                if user in user_descriptions:
-                    enriched_users.append(f"{user}: {user_descriptions[user]}")
+                description = user_descriptions.get(user, "")
+                if description.strip():
+                    enriched_users.append(f"{user}: {description}")
                 else:
                     enriched_users.append(user)
 
@@ -139,18 +139,18 @@ def strip_emoji(text: str) -> str:
     # Диапазоны Unicode-блоков эмодзи
     emoji_pattern = re.compile(
         "["
-        "\U0001F600-\U0001F64F"  # emoticons
-        "\U0001F300-\U0001F5FF"  # symbols & pictographs
-        "\U0001F680-\U0001F6FF"  # transport & map
-        "\U0001F1E0-\U0001F1FF"  # flags
-        "\U00002600-\U000027BF"  # misc symbols
-        "\U0001F900-\U0001F9FF"  # supplemental symbols
-        "\U00002700-\U000027BF"  # dingbats
-        "\U0001FA00-\U0001FA6F"  # chess, etc.
-        "\U0001FA70-\U0001FAFF"  # food, etc.
-        "\U00002500-\U00002BEF"  # box drawing, arrows
-        "\U0000FE00-\U0000FE0F"  # variation selectors
-        "\U0001F004-\U0001F0CF"  # mahjong, playing cards
+        "\U0001f600-\U0001f64f"  # emoticons
+        "\U0001f300-\U0001f5ff"  # symbols & pictographs
+        "\U0001f680-\U0001f6ff"  # transport & map
+        "\U0001f1e0-\U0001f1ff"  # flags
+        "\U00002600-\U000027bf"  # misc symbols
+        "\U0001f900-\U0001f9ff"  # supplemental symbols
+        "\U00002700-\U000027bf"  # dingbats
+        "\U0001fa00-\U0001fa6f"  # chess, etc.
+        "\U0001fa70-\U0001faff"  # food, etc.
+        "\U00002500-\U00002bef"  # box drawing, arrows
+        "\U0000fe00-\U0000fe0f"  # variation selectors
+        "\U0001f004-\U0001f0cf"  # mahjong, playing cards
         "]+",
         flags=re.UNICODE,
     )
