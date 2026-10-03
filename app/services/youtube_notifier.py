@@ -4,7 +4,7 @@ from typing import Any
 
 import feedparser
 import pytz
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.core import config
 from app.data.models import YouTubeChannel, YouTubeVideo, async_session
@@ -99,7 +99,16 @@ class YouTubeNotifier:
                 if not channel:
                     return None
 
-                channel.is_active = active
+                # ID в двух БД могут различаться; обновляем все копии одной подписки.
+                await session.execute(
+                    update(YouTubeChannel)
+                    .where(
+                        YouTubeChannel.channel_id == channel.channel_id,
+                        YouTubeChannel.discord_channel_id == channel.discord_channel_id,
+                        YouTubeChannel.guild_id == channel.guild_id,
+                    )
+                    .values(is_active=active)
+                )
                 await session.commit()
                 return True
         except Exception as e:
