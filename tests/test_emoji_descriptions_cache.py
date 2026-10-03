@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.data import decorators, emoji_descriptions_cache
@@ -103,8 +104,16 @@ async def test_save_updates_existing_row_and_cache(database_session: MagicMock) 
     )
 
     assert message == "Описание эмодзи 'smile' успешно обновлено!"
-    assert existing.description == "Новое описание"
-    database_session.execute.assert_awaited_once()
+    assert database_session.execute.await_count == 2
+    lookup, write = [call.args[0] for call in database_session.execute.await_args_list]
+    assert lookup.compare(
+        select(GuildEmoji).where(GuildEmoji.name == "smile", GuildEmoji.guild_id == 100)
+    )
+    assert write.compare(
+        update(GuildEmoji)
+        .where(GuildEmoji.name == "smile", GuildEmoji.guild_id == 100)
+        .values(description="Новое описание")
+    )
     database_session.add.assert_not_called()
     database_session.commit.assert_awaited_once()
     assert emoji_descriptions_cache.get(100) == {"smile": "Новое описание"}

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.data import decorators, user_descriptions_cache
@@ -189,13 +189,17 @@ async def test_save_updates_existing_row_and_cache(database_session: MagicMock) 
     )
 
     assert message == "Описание для 'Alice' успешно обновлено!"
-    assert existing.description == "Новое описание"
-    database_session.execute.assert_awaited_once()
-    query = database_session.execute.call_args.args[0]
+    assert database_session.execute.await_count == 2
+    query, write = [call.args[0] for call in database_session.execute.await_args_list]
     assert query.compare(
         select(UserDescription).where(
             UserDescription.nick == "Alice", UserDescription.guild_id == 100
         )
+    )
+    assert write.compare(
+        update(UserDescription)
+        .where(UserDescription.nick == "Alice", UserDescription.guild_id == 100)
+        .values(description="Новое описание")
     )
     database_session.add.assert_not_called()
     database_session.commit.assert_awaited_once()

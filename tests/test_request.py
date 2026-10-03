@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy import select, update
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 from app.data import decorators, request
@@ -271,7 +272,18 @@ async def test_save_user_description_updates_existing_entry(
     result = await request.save_user_description("Alice", "Новое описание", 100)
 
     assert result == "Описание для 'Alice' успешно обновлено!"
-    assert existing_description.description == "Новое описание"
+    assert database_session.execute.await_count == 2
+    lookup, write = [call.args[0] for call in database_session.execute.await_args_list]
+    assert lookup.compare(
+        select(UserDescription).where(
+            UserDescription.nick == "Alice", UserDescription.guild_id == 100
+        )
+    )
+    assert write.compare(
+        update(UserDescription)
+        .where(UserDescription.nick == "Alice", UserDescription.guild_id == 100)
+        .values(description="Новое описание")
+    )
     database_session.add.assert_not_called()
     database_session.commit.assert_awaited_once()
 

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 import pytz
+from sqlalchemy import select, update
 
 from app.core import config
 from app.data.models import YouTubeChannel, YouTubeVideo
@@ -290,13 +291,28 @@ async def test_toggle_channel_updates_existing_channel(
     database_session: MagicMock,
 ) -> None:
     """Переключение найденного канала меняет статус и фиксирует транзакцию."""
-    channel = SimpleNamespace(is_active=True)
+    channel = _channel(name="Test")
     database_session.execute.return_value = _scalar_result(channel)
 
     result = await YouTubeNotifier(MagicMock()).toggle_channel("Test", 100, False)
 
     assert result is True
-    assert channel.is_active is False
+    assert database_session.execute.await_count == 2
+    lookup, write = [call.args[0] for call in database_session.execute.await_args_list]
+    assert lookup.compare(
+        select(YouTubeChannel).where(
+            YouTubeChannel.name == "Test", YouTubeChannel.guild_id == 100
+        )
+    )
+    assert write.compare(
+        update(YouTubeChannel)
+        .where(
+            YouTubeChannel.channel_id == "UC123",
+            YouTubeChannel.discord_channel_id == 200,
+            YouTubeChannel.guild_id == 100,
+        )
+        .values(is_active=False)
+    )
     database_session.commit.assert_awaited_once_with()
     assert database_session.context_exited is True
 
@@ -321,7 +337,7 @@ async def test_toggle_channel_logs_commit_error(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Ошибка commit при переключении возвращает False и логируется."""
-    database_session.execute.return_value = _scalar_result(SimpleNamespace(is_active=True))
+    database_session.execute.return_value = _scalar_result(_channel(name="Test"))
     database_session.commit.side_effect = RuntimeError("commit failed")
 
     result = await YouTubeNotifier(MagicMock()).toggle_channel("Test", 100, False)

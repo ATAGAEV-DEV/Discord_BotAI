@@ -3,7 +3,7 @@
 from types import ModuleType
 
 import pytest
-from sqlalchemy import text, update
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.data import (
@@ -77,19 +77,10 @@ async def test_postgres_rank_ties_gaps_and_guild_partition(databases: Databases)
 
 
 async def test_request_descriptions_update_and_delete_both_databases(databases: Databases) -> None:
-    """Request CRUD и явное обновление описания согласованы в обеих БД."""
+    """Повторное сохранение через request обновляет описание в обеих БД."""
     assert "добавлено" in await request.save_user_description("alice", "old", 100)
     await request.save_user_description("alice", "other guild", 200)
-    async with models.async_session() as session:
-        await session.execute(
-            update(models.UserDescription)
-            .where(
-                models.UserDescription.nick == "alice",
-                models.UserDescription.guild_id == 100,
-            )
-            .values(description="new")
-        )
-        await session.commit()
+    assert "обновлено" in await request.save_user_description("alice", "new", 100)
     assert await request.get_user_descriptions(100) == {"alice": "new"}
     for side in ("local", "remote"):
         assert {
@@ -113,7 +104,7 @@ async def test_description_cache_crud_reload_and_copies(
     databases: Databases, cache: ModuleType, model: type[models.Base], key: str
 ) -> None:
     """Кэш поддерживает CRUD, reload и копии без смешения guild."""
-    await cache.save("same", "old", 100)
+    assert "добавлено" in await cache.save("same", "old", 100)
     await cache.save("same", "other guild", 200)
     assert cache.get(100) == {"same": "old"}
     assert cache.get(200) == {"same": "other guild"}
@@ -124,13 +115,12 @@ async def test_description_cache_crud_reload_and_copies(
         assert {
             (r.guild_id, getattr(r, key)): r.description for r in await databases.rows(side, model)
         } == {(100, "same"): "old", (200, "same"): "other guild"}
-    async with models.async_session() as session:
-        await session.execute(
-            update(model)
-            .where(getattr(model, key) == "same", model.guild_id == 100)
-            .values(description="new")
-        )
-        await session.commit()
+    assert "обновлено" in await cache.save("same", "new", 100)
+    assert cache.get(100) == {"same": "new"}
+    for side in ("local", "remote"):
+        assert {
+            (r.guild_id, getattr(r, key)): r.description for r in await databases.rows(side, model)
+        } == {(100, "same"): "new", (200, "same"): "other guild"}
     cache._cache[999] = {"stale": "discard"}
     await cache.load_all()
     assert cache.get(999) == {}
