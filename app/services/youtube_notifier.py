@@ -26,7 +26,14 @@ class YouTubeNotifier:
                 channels = result.scalars().all()
 
                 for channel in channels:
-                    await self._check_channel_videos(channel)
+                    try:
+                        await self._check_channel_videos(channel)
+                    # Любая ошибка канала не должна прерывать проверку остальных.
+                    except Exception as e:  # noqa: BLE001
+                        print(
+                            f"Ошибка при проверке YouTube канала "
+                            f"{channel.name} (ID: {channel.channel_id}): {e}"
+                        )
         except Exception as e:
             print(f"Ошибка при проверке YouTube видео: {e}")
 
@@ -34,18 +41,26 @@ class YouTubeNotifier:
         url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel.channel_id}"
         feed = await asyncio.to_thread(feedparser.parse, url)
 
-        if feed.status != 200 or not feed.entries:
+        # При сетевом сбое feedparser может вернуть результат без HTTP-статуса.
+        status = getattr(feed, "status", None)
+        entries = getattr(feed, "entries", [])
+        if status != 200 or not entries:
             timestamp = datetime.now(tz=pytz.timezone(config.BOT_TIMEZONE)).strftime(
                 "%d.%m.%Y %H:%M:%S"
             )
-            print(
-                f"[{timestamp}] ❌ Неверный или недоступный канал: "
-                f"{channel.name} (ID: {channel.channel_id})"
+            description = (
+                "Не удалось загрузить RSS канала"
+                if status is None
+                else "Неверный или недоступный канал"
             )
-            print(f"HTTP статус: {feed.status}")
+            print(f"[{timestamp}] ❌ {description}: {channel.name} (ID: {channel.channel_id})")
+            print(f"HTTP статус: {status if status is not None else 'отсутствует'}")
+            error = getattr(feed, "bozo_exception", None)
+            if error is not None:
+                print(f"Причина: {error}")
             return
 
-        latest_video = feed.entries[0]
+        latest_video = entries[0]
         video_id = latest_video.get("yt_videoid")
         author = latest_video.get("author")
         published_at = datetime.now(tz=pytz.utc).replace(tzinfo=None)
