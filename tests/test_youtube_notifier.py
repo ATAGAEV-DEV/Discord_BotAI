@@ -1,9 +1,13 @@
 """Тесты уведомлений о новых видео."""
 
+from asyncio import CancelledError
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from socket import gaierror
+from ssl import SSLError
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
+from urllib.error import URLError
 
 import pytest
 import pytz
@@ -115,6 +119,98 @@ async def test_check_new_videos_checks_each_active_channel(
 
 
 @pytest.mark.asyncio
+async def test_check_new_videos_continues_after_channel_error(
+    database_session: MagicMock,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Ошибка одного канала не прерывает проверку остальных подписок."""
+    first_channel = _channel(channel_id="UC1", name="Failed channel")
+    second_channel = _channel(channel_id="UC2")
+    database_session.execute.return_value = _rows_result(first_channel, second_channel)
+    notifier = YouTubeNotifier(MagicMock())
+    notifier._check_channel_videos = AsyncMock(side_effect=[RuntimeError("feed failed"), None])
+
+    await notifier.check_new_videos()
+
+    assert notifier._check_channel_videos.await_args_list == [
+        call(first_channel),
+        call(second_channel),
+    ]
+    output = capsys.readouterr().out
+    assert "Failed channel (ID: UC1)" in output
+    assert "feed failed" in output
+    assert database_session.context_exited is True
+
+
+@pytest.mark.asyncio
+async def test_check_new_videos_propagates_cancellation(database_session: MagicMock) -> None:
+    """Отмена задачи распространяется наружу и останавливает проверку каналов."""
+    first_channel = _channel(channel_id="UC1")
+    second_channel = _channel(channel_id="UC2")
+    database_session.execute.return_value = _rows_result(first_channel, second_channel)
+    notifier = YouTubeNotifier(MagicMock())
+    notifier._check_channel_videos = AsyncMock(side_effect=CancelledError)
+
+    with pytest.raises(CancelledError):
+        await notifier.check_new_videos()
+
+    notifier._check_channel_videos.assert_awaited_once_with(first_channel)
+    assert database_session.context_exited is True
+
+
+@pytest.mark.asyncio
+async def test_check_new_videos_continues_after_missing_feed_status(
+    database_session: MagicMock,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """После RSS без статуса новый ролик следующего канала сохраняется и отправляется."""
+    first_channel = _channel(channel_id="UC1", name="Failed channel")
+    second_channel = _channel(channel_id="UC2", name="Healthy channel")
+    database_session.execute.side_effect = [
+        _rows_result(first_channel, second_channel),
+        _scalar_result(None),
+    ]
+    failed_feed = youtube_notifier.feedparser.FeedParserDict(
+        entries=[], bozo=True, bozo_exception=URLError("DNS lookup failed")
+    )
+    successful_feed = youtube_notifier.feedparser.FeedParserDict(
+        status=200, entries=[_feed_entry("New video")]
+    )
+    discord_channel = MagicMock()
+    discord_channel.send = AsyncMock()
+    bot = MagicMock()
+    bot.get_channel.return_value = discord_channel
+
+    with patch.object(youtube_notifier.asyncio, "to_thread", new_callable=AsyncMock) as mock:
+        mock.side_effect = [failed_feed, successful_feed]
+
+        await YouTubeNotifier(bot).check_new_videos()
+
+    assert mock.await_args_list == [
+        call(
+            youtube_notifier.feedparser.parse,
+            "https://www.youtube.com/feeds/videos.xml?channel_id=UC1",
+        ),
+        call(
+            youtube_notifier.feedparser.parse,
+            "https://www.youtube.com/feeds/videos.xml?channel_id=UC2",
+        ),
+    ]
+    database_session.add.assert_called_once()
+    assert database_session.add.call_args.args[0].channel_id == "UC2"
+    database_session.commit.assert_awaited_once_with()
+    bot.get_channel.assert_called_once_with(second_channel.discord_channel_id)
+    discord_channel.send.assert_awaited_once_with(
+        "🎥 **Новое видео на канале [Author](https://www.youtube.com/channel/UC2)!**\n"
+        "https://youtu.be/video-123"
+    )
+    output = capsys.readouterr().out
+    assert "Failed channel (ID: UC1)" in output
+    assert "DNS lookup failed" in output
+    assert "object has no attribute 'status'" not in output
+
+
+@pytest.mark.asyncio
 async def test_check_new_videos_logs_unexpected_error(
     database_session: MagicMock,
     capsys: pytest.CaptureFixture[str],
@@ -148,6 +244,95 @@ async def test_unavailable_feed_log_uses_configured_timezone(
         "https://www.youtube.com/feeds/videos.xml?channel_id=UC123",
     )
     mock_datetime.now.assert_called_once_with(tz=pytz.timezone("Asia/Tokyo"))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("has_entries", [False, True])
+async def test_missing_feed_status_is_reported_and_skipped(
+    has_entries: bool,
+    database_session: MagicMock,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """RSS без HTTP-статуса не вызывает AttributeError и не считается успешным."""
+    feed = youtube_notifier.feedparser.FeedParserDict(
+        entries=[_feed_entry("Unverified video")] if has_entries else [], bozo=False
+    )
+    bot = MagicMock()
+
+    with patch.object(youtube_notifier.asyncio, "to_thread", new_callable=AsyncMock) as mock:
+        mock.return_value = feed
+
+        await YouTubeNotifier(bot)._check_channel_videos(_channel())
+
+    output = capsys.readouterr().out
+    assert "Не удалось загрузить RSS канала: Test channel (ID: UC123)" in output
+    assert "HTTP статус: отсутствует" in output
+    assert "Неверный" not in output
+    assert "Причина:" not in output
+    database_session.execute.assert_not_awaited()
+    database_session.add.assert_not_called()
+    database_session.commit.assert_not_awaited()
+    bot.get_channel.assert_not_called()
+    assert database_session.context_entered is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(URLError(gaierror(-2, "DNS lookup failed")), id="dns"),
+        pytest.param(URLError(SSLError("TLS handshake failed")), id="tls"),
+        pytest.param(URLError(TimeoutError("request timed out")), id="timeout"),
+    ],
+)
+async def test_feed_network_error_is_reported_without_attribute_error(
+    error: URLError,
+    database_session: MagicMock,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Реальный feedparser возвращает сетевую причину без статуса; HTTP замокан."""
+    bot = MagicMock()
+
+    with patch.object(youtube_notifier.feedparser.http, "get", side_effect=error) as mock_get:
+        await YouTubeNotifier(bot)._check_channel_videos(_channel())
+
+    mock_get.assert_called_once()
+    output = capsys.readouterr().out
+    assert "Не удалось загрузить RSS канала: Test channel (ID: UC123)" in output
+    assert "HTTP статус: отсутствует" in output
+    assert f"Причина: {error}" in output
+    assert "object has no attribute 'status'" not in output
+    database_session.execute.assert_not_awaited()
+    database_session.add.assert_not_called()
+    database_session.commit.assert_not_awaited()
+    bot.get_channel.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [404, 429, 500])
+async def test_unsuccessful_http_status_is_reported_and_skipped(
+    status: int,
+    database_session: MagicMock,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Неуспешный HTTP-статус не допускает обработку видео, даже если записи есть."""
+    feed = youtube_notifier.feedparser.FeedParserDict(
+        status=status, entries=[_feed_entry("Unverified video")]
+    )
+    bot = MagicMock()
+
+    with patch.object(youtube_notifier.asyncio, "to_thread", new_callable=AsyncMock) as mock:
+        mock.return_value = feed
+
+        await YouTubeNotifier(bot)._check_channel_videos(_channel())
+
+    output = capsys.readouterr().out
+    assert "Неверный или недоступный канал: Test channel (ID: UC123)" in output
+    assert f"HTTP статус: {status}" in output
+    database_session.execute.assert_not_awaited()
+    database_session.add.assert_not_called()
+    database_session.commit.assert_not_awaited()
+    bot.get_channel.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -300,9 +485,7 @@ async def test_toggle_channel_updates_existing_channel(
     assert database_session.execute.await_count == 2
     lookup, write = [call.args[0] for call in database_session.execute.await_args_list]
     assert lookup.compare(
-        select(YouTubeChannel).where(
-            YouTubeChannel.name == "Test", YouTubeChannel.guild_id == 100
-        )
+        select(YouTubeChannel).where(YouTubeChannel.name == "Test", YouTubeChannel.guild_id == 100)
     )
     assert write.compare(
         update(YouTubeChannel)
