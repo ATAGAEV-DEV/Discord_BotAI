@@ -218,7 +218,11 @@ class TestCreateRangEmbed:
 
                 embed, _ = await create_rang_embed(**test_data)
 
-                assert f"{test_data['message_count']}/100" in embed.fields[0].value if embed.fields else True
+                assert (
+                    f"{test_data['message_count']}/100" in embed.fields[0].value
+                    if embed.fields
+                    else True
+                )
 
 
 class TestCreateImageWithTextAsync:
@@ -231,8 +235,6 @@ class TestCreateImageWithTextAsync:
     ) -> None:
         """Проверяет возвращаемый тип функции."""
         from io import BytesIO
-
-        mock_avatar = MagicMock(spec=Image.Image)
 
         with patch(
             "app.core.embeds.create_image_with_text"
@@ -274,8 +276,8 @@ class TestCreateImageWithTextAsync:
 
             with patch(
                 "app.core.embeds.create_image_with_text"
-            ) as mock_create:
-                result = await create_image_with_text_async(
+            ):
+                await create_image_with_text_async(
                     display_name="Test",
                     rang_description="Desc",
                     progress_bar="10/50",
