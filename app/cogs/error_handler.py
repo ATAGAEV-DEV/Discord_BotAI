@@ -45,6 +45,7 @@ class ErrorHandler(commands.Cog):
                     limit=self.bot.context_limit,
                     emoji_ids=emoji_ids,
                     mentions={user.id: user.name for user in ctx.message.mentions},
+                    channel_id=ctx.channel.id,
                 )
                 await ctx.send(f"{ctx.author.mention} {response}")
         elif isinstance(error, commands.CommandOnCooldown):

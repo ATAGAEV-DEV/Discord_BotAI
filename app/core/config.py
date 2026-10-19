@@ -17,6 +17,11 @@ CONTEXT_LIMIT: int = 100  # Количество строк контекста �
 REPORT_MSG_LIMIT: int = 15  # Порог сообщений для создания отчёта
 REPORT_TIME_LIMIT: int = 60  # Время ожидания в минутах для создания отчёта
 
+# RAG и краткосрочная память канала
+RAG_MIN_RELEVANCE_SCORE: float = 0.20  # Минимальный score для включения фрагмента в контекст
+CONVERSATION_MAX_PAIRS: int = 20  # Максимальное число пар (user, assistant) в памяти канала
+CONVERSATION_TTL: float = 36000.0  # TTL канала без активности (сек.), после которого история сбрасывается
+
 POLZA_PROVIDER = "polza"
 POLZA_API_URL = "https://api.polza.ai/api/v1"
 
@@ -125,12 +130,7 @@ def get_ai_settings() -> AISettings:
 
 
 def validate_ai_settings(settings: AISettings, *, require_tokens: bool = True) -> AISettings:
-    """Проверяет Polza-only конфигурацию без вывода секретов."""
-    if settings.provider != POLZA_PROVIDER:
-        raise ValueError("AI provider должен быть polza")
-    if settings.embedding_provider != POLZA_PROVIDER:
-        raise ValueError("Embedding provider должен быть polza")
-
+    """Проверяет корректность AI-конфигурации без вывода секретов."""
     for field_name, value in (
         ("api_url", settings.api_url),
         ("embedding_api_url", settings.embedding_api_url),
