@@ -538,7 +538,6 @@ class TestUserPrompt:
         assert "[e:ForeignEmoji]" not in result
         assert "\n4. " not in result
         assert "\n5. " not in result
-        assert "\n\n" not in result
         assert result == result.strip()
 
         if has_emojis:

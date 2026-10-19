@@ -181,6 +181,7 @@ async def test_unknown_command_generates_response_inside_typing(
         limit=17,
         emoji_ids=expected_emojis,
         mentions={},
+        channel_id=ANY,
     )
     mock_ctx.send.assert_awaited_once_with("<@12345> Ответ AI.\nВторая строка.")
     mock_ctx.typing.assert_called_once_with()
@@ -224,6 +225,7 @@ async def test_unknown_command_passes_account_names_from_message_mentions(
         limit=17,
         emoji_ids=error_cog.bot.guild_emoji_ids[67890] if guild_id else {},
         mentions={54321: "account.username", 12345: "test_user"},
+        channel_id=ANY,
     )
     mentioned.__str__.assert_not_called()
     mock_ctx.author.__str__.assert_not_called()

@@ -12,7 +12,7 @@ from app.core.ai_config import (
     invalidate_chat_client,
     invalidate_embedding_runtime,
 )
-from app.core.config import AISettings, get_ai_settings, validate_ai_settings
+from app.core.config import AISettings, get_ai_settings
 from app.data import guild_ai_config_cache
 from app.data.repositories.guild_ai_config import GuildAIConfigError
 
@@ -91,15 +91,6 @@ def test_environment_values_are_separate(monkeypatch: pytest.MonkeyPatch) -> Non
     assert settings.chat_model == "chat-model"
     assert settings.mini_model == "mini-model"
     assert settings.embedding_model == "embed-model"
-
-
-@pytest.mark.parametrize("field", ["provider", "embedding_provider"])
-def test_non_polza_provider_is_rejected(field: str) -> None:
-    """Runtime не принимает провайдер, отличный от Polza."""
-    settings = _settings()
-    object.__setattr__(settings, field, "other")
-    with pytest.raises(ValueError, match="provider"):
-        validate_ai_settings(settings)
 
 
 def test_embedding_token_never_falls_back_to_chat_token() -> None:

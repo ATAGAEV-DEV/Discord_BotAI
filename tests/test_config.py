@@ -145,9 +145,16 @@ def test_command_prefix_defaults_to_exclamation() -> None:
 
 def test_bot_limits_defaults() -> None:
     """Лимиты при запуске сохраняют прежние значения."""
-    assert config.CONTEXT_LIMIT == 100
+    assert config.CONTEXT_LIMIT == 150
     assert config.REPORT_MSG_LIMIT == 15
     assert config.REPORT_TIME_LIMIT == 60
+
+
+def test_rag_and_history_defaults() -> None:
+    """RAG и история канала сохраняют свои дефолтные значения."""
+    assert config.RAG_MIN_RELEVANCE_SCORE == 0.10
+    assert config.CONVERSATION_MAX_PAIRS == 10
+    assert config.CONVERSATION_TTL == 1800.0
 
 
 def test_command_prefix_from_config(monkeypatch: pytest.MonkeyPatch) -> None:

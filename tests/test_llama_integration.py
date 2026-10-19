@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, call
 import pytest
 
 from app.services import llama_integration
-from app.services.llama_integration import LlamaIndexManager
+from app.services.llama_integration import ChannelHistory, LlamaIndexManager
 
 
 @pytest.fixture
@@ -16,6 +16,8 @@ def manager() -> LlamaIndexManager:
     """Создаёт менеджер без инициализации внешних сервисов."""
     instance = object.__new__(LlamaIndexManager)
     instance.db = MagicMock()
+    instance._channel_histories = {}
+    instance._channel_server_map = {}
     return instance
 
 
@@ -227,7 +229,7 @@ async def test_query_relevant_context_returns_node_texts(
     vector_store = MagicMock()
     index = MagicMock()
     retriever = MagicMock()
-    nodes = [SimpleNamespace(text="Первый контекст"), SimpleNamespace(text="Второй контекст")]
+    nodes = [SimpleNamespace(text="Первый контекст", score=1.0), SimpleNamespace(text="Второй контекст", score=1.0)]
     index.as_retriever.return_value = retriever
     retriever.retrieve.return_value = nodes
     to_thread = AsyncMock(side_effect=_execute_to_thread)
@@ -356,3 +358,281 @@ async def test_index_server_users_returns_none_on_unexpected_error(
 
     assert result is None
     assert "Ошибка индексации пользователей сервера: RuntimeError" in capsys.readouterr().out
+
+
+
+# ---------------------------------------------------------------------------
+# ChannelHistory tests
+# ---------------------------------------------------------------------------
+
+
+def test_channel_history_starts_empty() -> None:
+    """Новая история не содержит сообщений."""
+    h = ChannelHistory()
+    assert h.get_messages() == []
+    assert h.get_texts() == []
+
+
+def test_channel_history_add_pair_stores_both_messages() -> None:
+    """add_pair сохраняет user и assistant сообщения в правильном порядке."""
+    h = ChannelHistory()
+    h.add_pair({"role": "user", "content": "привет"}, {"role": "assistant", "content": "здравствуй"})
+    msgs = h.get_messages()
+    assert len(msgs) == 2
+    assert msgs[0] == {"role": "user", "content": "привет"}
+    assert msgs[1] == {"role": "assistant", "content": "здравствуй"}
+
+
+def test_channel_history_get_texts_returns_contents() -> None:
+    """get_texts возвращает только строки content без role."""
+    h = ChannelHistory()
+    h.add_pair({"role": "user", "content": "вопрос"}, {"role": "assistant", "content": "ответ"})
+    assert h.get_texts() == ["вопрос", "ответ"]
+
+
+def test_channel_history_respects_max_pairs() -> None:
+    """Буфер ограничен max_pairs парами (deque maxlen = max_pairs * 2)."""
+    h = ChannelHistory(max_pairs=2)
+    for i in range(4):
+        h.add_pair({"role": "user", "content": f"q{i}"}, {"role": "assistant", "content": f"a{i}"})
+    msgs = h.get_messages()
+    # Хранятся только последние 2 пары
+    assert len(msgs) == 4
+    assert msgs[0]["content"] == "q2"
+    assert msgs[1]["content"] == "a2"
+    assert msgs[2]["content"] == "q3"
+    assert msgs[3]["content"] == "a3"
+
+
+def test_channel_history_clear_empties_messages() -> None:
+    """clear() удаляет все сообщения."""
+    h = ChannelHistory()
+    h.add_pair({"role": "user", "content": "x"}, {"role": "assistant", "content": "y"})
+    h.clear()
+    assert h.get_messages() == []
+    assert h.get_texts() == []
+
+
+def test_channel_history_is_not_expired_immediately() -> None:
+    """Свежая история не считается истёкшей."""
+    h = ChannelHistory()
+    assert not h.is_expired()
+
+
+def test_channel_history_is_expired_after_ttl() -> None:
+    """История считается истёкшей когда _last_activity далеко в прошлом."""
+    h = ChannelHistory()
+    h._last_activity -= 2000.0  # имитируем прошедшее время > TTL
+    assert h.is_expired(ttl=1800.0)
+
+
+def test_channel_history_add_pair_resets_expiry() -> None:
+    """add_pair обновляет _last_activity, сбрасывая таймер TTL."""
+    h = ChannelHistory()
+    h._last_activity -= 2000.0
+    assert h.is_expired(ttl=1800.0)
+    h.add_pair({"role": "user", "content": "ping"}, {"role": "assistant", "content": "pong"})
+    assert not h.is_expired(ttl=1800.0)
+
+
+# ---------------------------------------------------------------------------
+# LlamaIndexManager channel history management tests
+# ---------------------------------------------------------------------------
+
+
+def test_get_channel_history_creates_new_for_unknown_channel(
+    manager: LlamaIndexManager,
+) -> None:
+    """get_channel_history создаёт новую пустую историю для нового канала."""
+    history = manager.get_channel_history(111)
+    assert isinstance(history, ChannelHistory)
+    assert history.get_messages() == []
+
+
+def test_get_channel_history_returns_same_object_for_same_channel(
+    manager: LlamaIndexManager,
+) -> None:
+    """get_channel_history возвращает тот же объект при повторном вызове."""
+    h1 = manager.get_channel_history(222)
+    h2 = manager.get_channel_history(222)
+    assert h1 is h2
+
+
+def test_get_channel_history_stores_server_mapping(
+    manager: LlamaIndexManager,
+) -> None:
+    """server_id сохраняется в _channel_server_map."""
+    manager.get_channel_history(333, server_id=99)
+    assert manager._channel_server_map[333] == 99
+
+
+def test_get_channel_history_resets_expired_history(
+    manager: LlamaIndexManager,
+) -> None:
+    """Истёкшая история сбрасывается при следующем get_channel_history."""
+    history = manager.get_channel_history(444)
+    history.add_pair({"role": "user", "content": "old"}, {"role": "assistant", "content": "msg"})
+    history._last_activity -= 2000.0  # истекаем TTL
+
+    history2 = manager.get_channel_history(444)
+    assert history2 is history  # тот же объект
+    assert history2.get_messages() == []  # но очищен
+
+
+
+def test_clear_channel_history_clears_messages(
+    manager: LlamaIndexManager,
+) -> None:
+    """clear_channel_history очищает историю указанного канала."""
+    history = manager.get_channel_history(555)
+    history.add_pair({"role": "user", "content": "x"}, {"role": "assistant", "content": "y"})
+    manager.clear_channel_history(555)
+    assert history.get_messages() == []
+
+
+def test_clear_channel_history_noop_for_unknown_channel(
+    manager: LlamaIndexManager,
+) -> None:
+    """clear_channel_history не падает если канал неизвестен."""
+    manager.clear_channel_history(9999)  # не должно бросить исключение
+
+
+def test_clear_server_channel_histories_clears_only_target_server(
+    manager: LlamaIndexManager,
+) -> None:
+    """clear_server_channel_histories очищает только каналы нужного сервера."""
+    h1 = manager.get_channel_history(601, server_id=10)
+    h2 = manager.get_channel_history(602, server_id=10)
+    h3 = manager.get_channel_history(603, server_id=20)
+
+    for h in (h1, h2, h3):
+        h.add_pair({"role": "user", "content": "msg"}, {"role": "assistant", "content": "rpl"})
+
+    cleared = manager.clear_server_channel_histories(10)
+
+    assert cleared == 2
+    assert h1.get_messages() == []
+    assert h2.get_messages() == []
+    assert len(h3.get_messages()) == 2
+
+
+def test_clear_server_channel_histories_returns_zero_for_unknown_server(
+    manager: LlamaIndexManager,
+) -> None:
+    """Возвращает 0 если у сервера нет каналов с историей."""
+    manager.get_channel_history(700, server_id=50)
+    result = manager.clear_server_channel_histories(99)
+    assert result == 0
+
+
+
+# ---------------------------------------------------------------------------
+# query_relevant_context: score filter + deduplication tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_query_relevant_context_filters_low_score_nodes(
+    manager: LlamaIndexManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Узлы с score < RAG_MIN_RELEVANCE_SCORE отфильтровываются."""
+    from app.core.config import RAG_MIN_RELEVANCE_SCORE
+
+    low_node = SimpleNamespace(text="low score chunk", score=RAG_MIN_RELEVANCE_SCORE - 0.01)
+    high_node = SimpleNamespace(text="high score chunk", score=RAG_MIN_RELEVANCE_SCORE + 0.01)
+
+    vector_store = MagicMock()
+    index = MagicMock()
+    retriever = MagicMock()
+    retriever.retrieve.return_value = [low_node, high_node]
+    index.as_retriever.return_value = retriever
+    to_thread = AsyncMock(side_effect=_execute_to_thread)
+
+    _patch_query_components(monkeypatch, vector_store=vector_store, index=index)
+    monkeypatch.setattr(llama_integration.asyncio, "to_thread", to_thread)
+    manager.get_server_collection = MagicMock(return_value=MagicMock())
+
+    result = await manager.query_relevant_context(123, "запрос")
+
+    assert "high score chunk" in result
+    assert "low score chunk" not in result
+
+
+@pytest.mark.asyncio
+async def test_query_relevant_context_passes_node_with_none_score(
+    manager: LlamaIndexManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Узел с score=None не отфильтровывается (score-фильтр не применяется)."""
+    node = SimpleNamespace(text="no score chunk", score=None)
+
+    vector_store = MagicMock()
+    index = MagicMock()
+    retriever = MagicMock()
+    retriever.retrieve.return_value = [node]
+    index.as_retriever.return_value = retriever
+    to_thread = AsyncMock(side_effect=_execute_to_thread)
+
+    _patch_query_components(monkeypatch, vector_store=vector_store, index=index)
+    monkeypatch.setattr(llama_integration.asyncio, "to_thread", to_thread)
+    manager.get_server_collection = MagicMock(return_value=MagicMock())
+
+    result = await manager.query_relevant_context(123, "запрос")
+
+    assert "no score chunk" in result
+
+
+@pytest.mark.asyncio
+async def test_query_relevant_context_deduplicates_against_history_texts(
+    manager: LlamaIndexManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Чанки совпадающие с history_texts исключаются как дубли."""
+    duplicate_node = SimpleNamespace(text="user: привет assistant: здравствуй", score=0.9)
+    unique_node = SimpleNamespace(text="совершенно новый контекст", score=0.9)
+
+    vector_store = MagicMock()
+    index = MagicMock()
+    retriever = MagicMock()
+    retriever.retrieve.return_value = [duplicate_node, unique_node]
+    index.as_retriever.return_value = retriever
+    to_thread = AsyncMock(side_effect=_execute_to_thread)
+
+    _patch_query_components(monkeypatch, vector_store=vector_store, index=index)
+    monkeypatch.setattr(llama_integration.asyncio, "to_thread", to_thread)
+    manager.get_server_collection = MagicMock(return_value=MagicMock())
+
+    history_texts = ["user: привет assistant: здравствуй"]
+
+    result = await manager.query_relevant_context(
+        123, "запрос", history_texts=history_texts
+    )
+
+    assert "совершенно новый контекст" in result
+    assert "user: привет assistant: здравствуй" not in result
+
+
+@pytest.mark.asyncio
+async def test_query_relevant_context_no_dedup_without_history(
+    manager: LlamaIndexManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Без history_texts дедупликация не применяется."""
+    node1 = SimpleNamespace(text="первый чанк", score=0.8)
+    node2 = SimpleNamespace(text="второй чанк", score=0.8)
+
+    vector_store = MagicMock()
+    index = MagicMock()
+    retriever = MagicMock()
+    retriever.retrieve.return_value = [node1, node2]
+    index.as_retriever.return_value = retriever
+    to_thread = AsyncMock(side_effect=_execute_to_thread)
+
+    _patch_query_components(monkeypatch, vector_store=vector_store, index=index)
+    monkeypatch.setattr(llama_integration.asyncio, "to_thread", to_thread)
+    manager.get_server_collection = MagicMock(return_value=MagicMock())
+
+    result = await manager.query_relevant_context(123, "запрос")
+
+    assert result == ["первый чанк", "второй чанк"]
