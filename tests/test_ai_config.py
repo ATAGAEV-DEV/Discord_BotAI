@@ -1,253 +1,166 @@
-"""Unit-тесты для app/core/ai_config.py."""
+"""Unit-тесты Polza runtime и независимых client caches."""
 
 import pytest
 from openai import AsyncOpenAI
 
 from app.core import ai_config
 from app.core.ai_config import (
-    PROVIDERS,
-    get_active_provider,
-    get_available_providers,
     get_client,
+    get_embedding_client,
+    get_embedding_config,
     get_model,
-    get_provider_config,
-    next_provider,
-    set_active_provider,
-    set_model,
+    invalidate_chat_client,
+    invalidate_embedding_runtime,
 )
-from app.core.config import PROVIDERS as CONFIG_PROVIDERS
-from app.core.config import AISettings, get_ai_settings
+from app.core.config import AISettings, get_ai_settings, validate_ai_settings
+from app.data import guild_ai_config_cache
+from app.data.repositories.guild_ai_config import GuildAIConfigError
+
+
+def _settings(
+    *,
+    token: str = "chat-secret",
+    embedding_token: str = "embedding-secret",
+    api_url: str = "https://chat.example/v1",
+    embedding_api_url: str = "https://embedding.example/v1",
+    chat_model: str = "chat-model",
+    embedding_model: str = "embedding-model",
+) -> AISettings:
+    """Создаёт полные настройки без чтения рабочей среды."""
+    return AISettings(
+        api_url=api_url,
+        token=token,
+        chat_model=chat_model,
+        embedding_api_url=embedding_api_url,
+        embedding_token=embedding_token,
+        embedding_model=embedding_model,
+    )
 
 
 @pytest.fixture(autouse=True)
-def _reset_ai_config_state() -> None:
-    """Сбрасывает глобальное состояние ai_config перед каждым тестом."""
-    ai_config._active_provider = "aitunnel"
-    ai_config._active_model = "claude-haiku-4.5"
-    ai_config._cached_client = None
-    ai_config._cached_provider_name = None
+def _reset_runtime_cache() -> None:
+    """Изолирует client и guild caches между тестами."""
+    ai_config.clear_client_caches()
+    guild_ai_config_cache.clear()
+    yield
+    ai_config.clear_client_caches()
+    guild_ai_config_cache.clear()
 
 
-# ── get_provider_config ─────────────────────────────────────────
+def test_defaults_are_polza_and_have_separate_urls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Дефолты содержат Polza и два независимых URL."""
+    for name in (
+        "AI_PROVIDER",
+        "AI_API_URL",
+        "AI_MODEL",
+        "AI_MODEL_MINI",
+        "AI_EMBEDDING_PROVIDER",
+        "AI_EMBEDDING_API_URL",
+        "AI_EMBEDDING_MODEL",
+        "AI_TOKEN",
+        "AI_EMBEDDING_TOKEN",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = get_ai_settings()
+
+    assert settings.provider == "polza"
+    assert settings.embedding_provider == "polza"
+    assert settings.api_url == "https://api.polza.ai/api/v1"
+    assert settings.embedding_api_url == "https://api.polza.ai/api/v1"
+    assert settings.token is None
+    assert settings.embedding_token is None
 
 
-class TestGetProviderConfig:
-    """Тесты для функции get_provider_config."""
+def test_environment_values_are_separate(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Каждый env credential и URL попадает только в своё поле."""
+    monkeypatch.setenv("AI_API_URL", "https://chat.example/v2")
+    monkeypatch.setenv("AI_EMBEDDING_API_URL", "https://embed.example/v3")
+    monkeypatch.setenv("AI_TOKEN", "chat-secret")
+    monkeypatch.setenv("AI_EMBEDDING_TOKEN", "embedding-secret")
+    monkeypatch.setenv("AI_MODEL", "chat-model")
+    monkeypatch.setenv("AI_MODEL_MINI", "mini-model")
+    monkeypatch.setenv("AI_EMBEDDING_MODEL", "embed-model")
 
-    def test_returns_config_for_valid_provider(self) -> None:
-        """Возвращает конфиг для существующего провайдера."""
-        config = get_provider_config("proxyapi")
-        assert "api_key" in config
-        assert config["base_url"] == "https://api.proxyapi.ru/openai/v1"
+    settings = get_ai_settings()
 
-    def test_returns_config_for_active_provider(self) -> None:
-        """Без аргумента возвращает конфиг активного провайдера."""
-        set_active_provider("polza")
-        config = get_provider_config()
-        assert config["base_url"] == "https://api.polza.ai/api/v1"
-
-    def test_raises_on_unknown_provider(self) -> None:
-        """Ошибка при неизвестном провайдере."""
-        with pytest.raises(ValueError, match="Неизвестный провайдер"):
-            get_provider_config("nonexistent")
-
-    def test_registry_is_shared_with_config(self) -> None:
-        """Старый импорт PROVIDERS продолжает работать после переноса реестра."""
-        assert PROVIDERS is CONFIG_PROVIDERS
+    assert settings.api_url == "https://chat.example/v2"
+    assert settings.embedding_api_url == "https://embed.example/v3"
+    assert settings.token == "chat-secret"
+    assert settings.embedding_token == "embedding-secret"
+    assert settings.chat_model == "chat-model"
+    assert settings.mini_model == "mini-model"
+    assert settings.embedding_model == "embed-model"
 
 
-class TestAISettings:
-    """Тесты для общих AI-настроек."""
-
-    def test_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """При отсутствии переменных используются прежние значения по умолчанию."""
-        for name in (
-            "AI_PROVIDER",
-            "AI_MODEL",
-            "AI_MODEL_MINI",
-            "AI_EMBEDDING_PROVIDER",
-            "AI_EMBEDDING_MODEL",
-        ):
-            monkeypatch.delenv(name, raising=False)
-
-        assert get_ai_settings() == AISettings(
-            provider="polza",
-            model="openai/gpt-6-luna",
-            mini_model="openai/gpt-6-luna",
-            embedding_provider="polza",
-            embedding_model="text-embedding-3-large",
-        )
-
-    def test_env_overrides(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Все настройки переопределяются переменными окружения."""
-        monkeypatch.setenv("AI_PROVIDER", "aitunnel")
-        monkeypatch.setenv("AI_MODEL", "custom-chat")
-        monkeypatch.setenv("AI_MODEL_MINI", "custom-mini")
-        monkeypatch.setenv("AI_EMBEDDING_PROVIDER", "proxyapi")
-        monkeypatch.setenv("AI_EMBEDDING_MODEL", "custom-embedding")
-
-        assert get_ai_settings() == AISettings(
-            provider="aitunnel",
-            model="custom-chat",
-            mini_model="custom-mini",
-            embedding_provider="proxyapi",
-            embedding_model="custom-embedding",
-        )
+@pytest.mark.parametrize("field", ["provider", "embedding_provider"])
+def test_non_polza_provider_is_rejected(field: str) -> None:
+    """Runtime не принимает провайдер, отличный от Polza."""
+    settings = _settings()
+    object.__setattr__(settings, field, "other")
+    with pytest.raises(ValueError, match="provider"):
+        validate_ai_settings(settings)
 
 
-class TestGetEmbeddingConfig:
-    """Тесты для конфигурации embeddings."""
+def test_embedding_token_never_falls_back_to_chat_token() -> None:
+    """Отсутствующий embedding token не подменяется chat token."""
+    settings = _settings(embedding_token=None)
+    guild_ai_config_cache._cache[100] = settings
 
-    def test_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Embeddings по умолчанию используют polza и прежнюю модель."""
-        monkeypatch.delenv("AI_EMBEDDING_PROVIDER", raising=False)
-        monkeypatch.delenv("AI_EMBEDDING_MODEL", raising=False)
-
-        config = ai_config.get_embedding_config()
-
-        assert config["base_url"] == PROVIDERS["polza"]["base_url"]
-        assert config["model"] == "text-embedding-3-large"
-
-    def test_env_and_explicit_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Настройки окружения читаются при вызове, аргумент важнее провайдера из env."""
-        monkeypatch.setenv("AI_EMBEDDING_PROVIDER", "aitunnel")
-        monkeypatch.setenv("AI_EMBEDDING_MODEL", "custom-embedding")
-
-        assert ai_config.get_embedding_config()["base_url"] == PROVIDERS["aitunnel"]["base_url"]
-        config = ai_config.get_embedding_config("proxyapi")
-        assert config["base_url"] == PROVIDERS["proxyapi"]["base_url"]
-        assert config["model"] == "custom-embedding"
+    assert get_client(100) is not None
+    with pytest.raises(ValueError, match="embedding token"):
+        get_embedding_client(100)
 
 
-# ── set_active_provider / get_active_provider ───────────────────
+def test_chat_and_embedding_clients_are_isolated_by_namespace() -> None:
+    """URL/token/guild изменения затрагивают только соответствующий cache."""
+    settings = _settings()
+    chat = get_client(100, settings=settings)
+    assert isinstance(chat, AsyncOpenAI)
+    assert get_client(100, settings=settings) is chat
+    assert get_client(200, settings=settings) is not chat
+
+    embedding = get_embedding_client(100, settings=settings)
+    assert get_embedding_client(100, settings=settings) is embedding
+    assert embedding is not chat
+
+    changed_chat = _settings(token="new-chat-secret", embedding_token="embedding-secret")
+    assert get_client(100, settings=changed_chat) is not chat
+    assert get_embedding_client(100, settings=changed_chat) is embedding
+
+    changed_embedding = _settings(token="chat-secret", embedding_token="new-embedding-secret")
+    assert get_client(100, settings=changed_embedding) is chat
+    assert get_embedding_client(100, settings=changed_embedding) is not embedding
 
 
-class TestSetGetActiveProvider:
-    """Тесты для set_active_provider и get_active_provider."""
+def test_invalidation_is_independent() -> None:
+    """Явная invalidation одного назначения не очищает другое."""
+    settings = _settings()
+    chat = get_client(1, settings=settings)
+    embedding = get_embedding_client(1, settings=settings)
 
-    def test_sets_and_gets_provider(self) -> None:
-        """Устанавливает и возвращает активного провайдера."""
-        set_active_provider("proxyapi")
-        assert get_active_provider() == "proxyapi"
+    invalidate_chat_client(1)
+    assert get_client(1, settings=settings) is not chat
+    assert get_embedding_client(1, settings=settings) is embedding
 
-    def test_resets_cache_on_switch(self) -> None:
-        """При смене провайдера кеш клиента сбрасывается."""
-        get_client()
-        assert ai_config._cached_client is not None
-
-        set_active_provider("polza")
-        assert ai_config._cached_client is None
-        assert ai_config._cached_provider_name is None
-
-    def test_raises_on_unknown_provider(self) -> None:
-        """Ошибка при попытке установить неизвестного провайдера."""
-        with pytest.raises(ValueError, match="Неизвестный провайдер"):
-            set_active_provider("unknown")
+    invalidate_embedding_runtime(1)
+    assert get_client(1, settings=settings) is not chat
+    assert get_embedding_client(1, settings=settings) is not embedding
 
 
-# ── next_provider ───────────────────────────────────────────────
+def test_model_lookup_requires_loaded_guild_configuration() -> None:
+    """Guild runtime не использует env при cache miss."""
+    with pytest.raises(GuildAIConfigError, match="не загружена"):
+        get_model(999)
 
 
-class TestNextProvider:
-    """Тесты для функции next_provider."""
+def test_embedding_config_keeps_embedding_url_and_secret_internal() -> None:
+    """Embedding config использует собственные поля, а repr не раскрывает token."""
+    settings = _settings()
+    config = get_embedding_config(settings=settings)
 
-    def test_cycles_to_next_provider(self) -> None:
-        """Переключает на следующего провайдера."""
-        providers_list = list(PROVIDERS.keys())
-        start = get_active_provider()
-        start_index = providers_list.index(start)
-        expected = providers_list[(start_index + 1) % len(providers_list)]
-
-        result = next_provider()
-        assert result == expected
-        assert get_active_provider() == expected
-
-    def test_wraps_around(self) -> None:
-        """Возвращается к первому провайдеру после последнего."""
-        providers_list = list(PROVIDERS.keys())
-        # Переключаем до последнего
-        set_active_provider(providers_list[-1])
-
-        result = next_provider()
-        assert result == providers_list[0]
-
-
-# ── get_available_providers ─────────────────────────────────────
-
-
-class TestGetAvailableProviders:
-    """Тесты для функции get_available_providers."""
-
-    def test_returns_all_providers(self) -> None:
-        """Возвращает список всех провайдеров."""
-        result = get_available_providers()
-        assert set(result) == set(PROVIDERS.keys())
-        assert len(result) == len(PROVIDERS)
-
-    def test_returns_list(self) -> None:
-        """Возвращает list, а не dict_keys."""
-        assert isinstance(get_available_providers(), list)
-
-
-# ── get_model / set_model ───────────────────────────────────────
-
-
-class TestGetSetModel:
-    """Тесты для get_model и set_model."""
-
-    def test_default_model(self) -> None:
-        """Модель по умолчанию — 'claude-haiku-4.5'."""
-        assert get_model() == "claude-haiku-4.5"
-
-    def test_set_and_get_model(self) -> None:
-        """Устанавливает и возвращает новую модель."""
-        set_model("gpt-4o")
-        assert get_model() == "gpt-4o"
-
-
-# ── get_client ──────────────────────────────────────────────────
-
-
-class TestGetClient:
-    """Тесты для функции get_client."""
-
-    def test_returns_async_openai_client(self) -> None:
-        """Возвращает экземпляр AsyncOpenAI."""
-        client = get_client()
-        assert isinstance(client, AsyncOpenAI)
-
-    def test_caches_client(self) -> None:
-        """Повторный вызов возвращает тот же объект."""
-        client1 = get_client()
-        client2 = get_client()
-        assert client1 is client2
-
-    def test_recreates_on_different_provider(self) -> None:
-        """Создаёт новый клиент при смене провайдера."""
-        client1 = get_client()
-        set_active_provider("polza")
-        client2 = get_client()
-        assert client1 is not client2
-
-    def test_explicit_provider_argument(self) -> None:
-        """Можно явно указать провайдера."""
-        client = get_client("proxyapi")
-        assert isinstance(client, AsyncOpenAI)
-        assert ai_config._cached_provider_name == "proxyapi"
-
-
-# ── get_mini_model ──────────────────────────────────────────────
-
-
-class TestGetMiniModel:
-    """Тесты для get_mini_model."""
-
-    def test_default_mini_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Модель по умолчанию — 'openai/gpt-6-luna'."""
-        monkeypatch.delenv("AI_MODEL_MINI", raising=False)
-        assert ai_config.get_mini_model() == "openai/gpt-6-luna"
-
-    def test_env_var_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Можно переопределить через переменную окружения."""
-        monkeypatch.setenv("AI_MODEL_MINI", "gpt-3.5-turbo")
-        assert ai_config.get_mini_model() == "gpt-3.5-turbo"
+    assert config["base_url"] == settings.embedding_api_url
+    assert config["api_key"] == settings.embedding_token
+    assert settings.token not in repr(settings)
+    assert settings.embedding_token not in repr(settings)
+    assert "token" not in settings.public_dict()

@@ -39,10 +39,14 @@ def test_ai_settings_default_when_environment_is_missing(monkeypatch: pytest.Mon
     """При отсутствии AI-переменных используются значения по умолчанию."""
     for name in (
         "AI_PROVIDER",
+        "AI_API_URL",
         "AI_MODEL",
         "AI_MODEL_MINI",
         "AI_EMBEDDING_PROVIDER",
+        "AI_EMBEDDING_API_URL",
         "AI_EMBEDDING_MODEL",
+        "AI_TOKEN",
+        "AI_EMBEDDING_TOKEN",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -51,17 +55,25 @@ def test_ai_settings_default_when_environment_is_missing(monkeypatch: pytest.Mon
 
 def test_ai_settings_environment_overrides_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     """Значения AI из окружения имеют приоритет над значениями по умолчанию."""
-    monkeypatch.setenv("AI_PROVIDER", "aitunnel")
+    monkeypatch.setenv("AI_PROVIDER", "polza")
+    monkeypatch.setenv("AI_API_URL", "https://chat.example/v1")
     monkeypatch.setenv("AI_MODEL", "custom-model")
     monkeypatch.setenv("AI_MODEL_MINI", "custom-mini-model")
-    monkeypatch.setenv("AI_EMBEDDING_PROVIDER", "proxyapi")
+    monkeypatch.setenv("AI_EMBEDDING_PROVIDER", "polza")
+    monkeypatch.setenv("AI_EMBEDDING_API_URL", "https://embedding.example/v1")
     monkeypatch.setenv("AI_EMBEDDING_MODEL", "custom-embedding-model")
+    monkeypatch.setenv("AI_TOKEN", "chat-secret")
+    monkeypatch.setenv("AI_EMBEDDING_TOKEN", "embedding-secret")
 
     assert get_ai_settings() == AISettings(
-        provider="aitunnel",
+        provider="polza",
+        api_url="https://chat.example/v1",
+        token="chat-secret",
         model="custom-model",
         mini_model="custom-mini-model",
-        embedding_provider="proxyapi",
+        embedding_provider="polza",
+        embedding_api_url="https://embedding.example/v1",
+        embedding_token="embedding-secret",
         embedding_model="custom-embedding-model",
     )
 
@@ -70,10 +82,14 @@ def test_empty_ai_environment_uses_defaults(monkeypatch: pytest.MonkeyPatch) -> 
     """Пустые AI-переменные считаются отсутствующими."""
     for name in (
         "AI_PROVIDER",
+        "AI_API_URL",
         "AI_MODEL",
         "AI_MODEL_MINI",
         "AI_EMBEDDING_PROVIDER",
+        "AI_EMBEDDING_API_URL",
         "AI_EMBEDDING_MODEL",
+        "AI_TOKEN",
+        "AI_EMBEDDING_TOKEN",
     ):
         monkeypatch.setenv(name, "")
 

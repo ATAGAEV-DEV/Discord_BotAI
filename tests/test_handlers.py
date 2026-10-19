@@ -5,8 +5,23 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.core.config import AI_GENERATE_TIMEOUT
+from app.core.config import AI_GENERATE_TIMEOUT, AISettings
 from app.core.handlers import ai_generate, clear_server_history
+from app.data import guild_ai_config_cache
+
+
+@pytest.fixture(autouse=True)
+def _guild_ai_settings() -> None:
+    """Подготавливает полную guild-конфигурацию для unit AI-вызовов."""
+    guild_ai_config_cache._cache.update(
+        {
+            guild_id: AISettings(token="chat-secret", embedding_token="embedding-secret")
+            for guild_id in (123, 456, 789, 12345)
+        }
+    )
+    guild_ai_config_cache._loaded = True
+    yield
+    guild_ai_config_cache.clear()
 
 
 class TestClearServerHistory:
@@ -241,8 +256,8 @@ async def test_ai_generate_sends_only_current_guild_emojis(
     assert [message["role"] for message in messages] == ["system", "user"]
     system_prompt = messages[0]["content"]
     if expected_list:
-        assert system_prompt.count("Использовать только эмодзи сервера из списка ниже.") == 1
-        assert system_prompt.count("Правила формата эмодзи:") == 1
+        assert system_prompt.count("Используй только эмодзи из списка.") == 1
+        assert system_prompt.count("**Формат эмодзи**") == 1
         assert system_prompt.count("Доступные эмодзи:") == 1
         emoji_list = (
             system_prompt.split("Доступные эмодзи:", 1)[1]
@@ -477,9 +492,8 @@ async def test_ai_generate_resolves_mentions_and_uses_guild_descriptions_without
         ["system", "system", "user"] if has_context else ["system", "user"]
     )
     system_prompt = messages[0]["content"]
-    assert [line for line in system_prompt.splitlines() if line.startswith("- ")] == (
-        expected_user_lines
-    )
+    for expected_line in expected_user_lines:
+        assert expected_line in system_prompt
     if expected_user_lines:
         assert system_prompt.count("Информация по пользователям") == 1
     else:

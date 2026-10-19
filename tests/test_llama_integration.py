@@ -68,48 +68,23 @@ async def _execute_to_thread(
 def test_manager_initialization_configures_llama_components(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Конструктор создаёт и сохраняет все зависимости LlamaIndex."""
-    client = MagicMock()
-    embedding_config = {
-        "api_key": "embedding-key",
-        "base_url": "https://embedding.example/v1",
-        "model": "embedding-model",
-    }
-    embed_model = MagicMock()
+    """Конструктор не создаёт global AI client до guild-aware вызова."""
     node_parser = MagicMock()
     database = MagicMock()
-    embedding_factory = MagicMock(return_value=embed_model)
     parser_factory = MagicMock()
     parser_factory.from_defaults.return_value = node_parser
-    settings = MagicMock()
 
-    monkeypatch.setattr(llama_integration, "get_client", MagicMock(return_value=client))
-    monkeypatch.setattr(
-        llama_integration,
-        "get_embedding_config",
-        MagicMock(return_value=embedding_config),
-    )
-    monkeypatch.setattr(llama_integration, "OpenAIEmbedding", embedding_factory)
     monkeypatch.setattr(llama_integration, "SimpleNodeParser", parser_factory)
     monkeypatch.setattr(llama_integration, "chromadb", MagicMock(PersistentClient=MagicMock()))
     llama_integration.chromadb.PersistentClient.return_value = database
-    monkeypatch.setattr(llama_integration, "Settings", settings)
 
     manager = LlamaIndexManager()
 
-    assert manager.custom_client is client
-    assert manager.embed_model is embed_model
+    assert manager.custom_client is None
     assert manager.node_parser is node_parser
     assert manager.db is database
-    embedding_factory.assert_called_once_with(
-        api_key="embedding-key",
-        api_base="https://embedding.example/v1",
-        model="embedding-model",
-    )
     parser_factory.from_defaults.assert_called_once_with(chunk_size=128, chunk_overlap=16)
     llama_integration.chromadb.PersistentClient.assert_called_once_with(path="./chroma_db")
-    assert settings.embed_model is embed_model
-    assert settings.node_parser is node_parser
 
 
 def test_get_server_collection_returns_existing_collection(manager: LlamaIndexManager) -> None:
@@ -240,7 +215,7 @@ async def test_index_messages_returns_none_on_unexpected_error(
     result = await manager.index_messages(123, [{"role": "user", "content": "Question"}])
 
     assert result is None
-    assert "Ошибка индексации сообщений: index failed" in capsys.readouterr().out
+    assert "Ошибка индексации сообщений: RuntimeError" in capsys.readouterr().out
 
 
 @pytest.mark.asyncio
@@ -310,7 +285,7 @@ async def test_query_relevant_context_returns_empty_list_on_unexpected_error(
     result = await manager.query_relevant_context(123, "вопрос")
 
     assert result == []
-    assert "Ошибка поиска контекста: query failed" in capsys.readouterr().out
+    assert "Ошибка поиска контекста: RuntimeError" in capsys.readouterr().out
 
 
 @pytest.mark.asyncio
@@ -380,4 +355,4 @@ async def test_index_server_users_returns_none_on_unexpected_error(
     result = await manager.index_server_users(123, ["Alice"])
 
     assert result is None
-    assert "Ошибка индексации пользователей сервера: users failed" in capsys.readouterr().out
+    assert "Ошибка индексации пользователей сервера: RuntimeError" in capsys.readouterr().out

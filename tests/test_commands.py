@@ -199,60 +199,6 @@ async def test_update_user_command(
     assert "Список пользователей сервера обновлен" in mock_ctx.send.call_args[0][0]
 
 
-# ── ai_provider_command ─────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-@patch("app.cogs.admin.get_available_providers")
-@patch("app.cogs.admin.next_provider")
-async def test_ai_provider_next(
-    mock_next: MagicMock,
-    mock_available: MagicMock,
-    admin_cog: Admin,
-    mock_ctx: AsyncMock,
-) -> None:
-    """!ai без аргументов переключает на следующего провайдера."""
-    mock_available.return_value = ["prov1", "prov2"]
-    mock_next.return_value = "prov2"
-
-    await admin_cog.ai_provider_command.callback(admin_cog, mock_ctx, name=None)
-
-    mock_next.assert_called_once()
-    mock_ctx.send.assert_called()
-    assert "prov2" in mock_ctx.send.call_args[0][0]
-
-
-@pytest.mark.asyncio
-@patch("app.cogs.admin.get_available_providers")
-@patch("app.cogs.admin.set_active_provider")
-async def test_ai_provider_set_valid(
-    mock_set: MagicMock,
-    mock_available: MagicMock,
-    admin_cog: Admin,
-    mock_ctx: AsyncMock,
-) -> None:
-    """!ai name устанавливает провайдера."""
-    mock_available.return_value = ["prov1", "prov2"]
-
-    await admin_cog.ai_provider_command.callback(admin_cog, mock_ctx, name="prov1")
-
-    mock_set.assert_called_once_with("prov1")
-    assert "переключён на **prov1**" in mock_ctx.send.call_args[0][0]
-
-
-@pytest.mark.asyncio
-@patch("app.cogs.admin.get_available_providers")
-async def test_ai_provider_invalid(
-    mock_available: MagicMock, admin_cog: Admin, mock_ctx: AsyncMock
-) -> None:
-    """!ai invalid сообщает об ошибке."""
-    mock_available.return_value = ["prov1", "prov2"]
-
-    await admin_cog.ai_provider_command.callback(admin_cog, mock_ctx, name="invalid")
-
-    assert "не найден" in mock_ctx.send.call_args[0][0]
-
-
 # ── youtube_commands ────────────────────────────────────────────
 
 

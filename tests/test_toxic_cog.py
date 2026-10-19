@@ -104,8 +104,8 @@ def _assert_successful_roast(
     """Проверяет полный AI-запрос, ожидание отправки и закрытие typing-контекста."""
     env.ctx.channel.history.assert_called_once_with(limit=history_limit)
     env.get_descriptions.assert_called_once_with(456)
-    env.get_client.assert_called_once_with()
-    env.get_model.assert_called_once_with()
+    env.get_client.assert_called_once_with(456)
+    env.get_model.assert_called_once_with(456)
     expected_messages = [
         {"role": "system", "content": system_content},
         {"role": "user", "content": f"Вот последние сообщения чата:\n{history_text}"},
@@ -439,8 +439,8 @@ async def test_ai_error_exits_typing_without_sending(toxic_env: SimpleNamespace)
         await toxic_env.cog.roast_command.callback(toxic_env.cog, toxic_env.ctx)
 
     assert exc_info.value is error
-    toxic_env.get_client.assert_called_once_with()
-    toxic_env.get_model.assert_called_once_with()
+    toxic_env.get_client.assert_called_once_with(456)
+    toxic_env.get_model.assert_called_once_with(456)
     toxic_env.create.assert_awaited_once_with(
         model="test-roast-model",
         messages=[

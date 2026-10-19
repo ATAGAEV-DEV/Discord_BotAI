@@ -20,8 +20,8 @@ class TestConstants:
     def test_emoji_prompt_has_rules_and_list_placeholder(self) -> None:
         """Отдельный шаблон содержит правила формата и место для серверного списка."""
         assert EMOJI_PROMPT.count("{emoji_list}") == 1
-        assert EMOJI_PROMPT.count("Использовать только эмодзи сервера из списка ниже.") == 1
-        assert EMOJI_PROMPT.count("Правила формата эмодзи:") == 1
+        assert "обязательно используй хотя бы одно эмодзи сервера" in EMOJI_PROMPT
+        assert "Перед отправкой ответа проверь" in EMOJI_PROMPT
         assert EMOJI_PROMPT.count("Доступные эмодзи:") == 1
         assert "[e:ИМЯ]" in EMOJI_PROMPT
         assert "{user_info}" not in EMOJI_PROMPT

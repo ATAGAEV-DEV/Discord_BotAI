@@ -20,6 +20,7 @@ _EXTENSIONS = (
 )
 _READY_STEPS = (
     "init_models",
+    "load_ai_configs",
     "load_admins",
     "load_user_descriptions",
     "load_emoji_descriptions",
@@ -49,12 +50,14 @@ def ready_dependencies(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     """Подменяет зависимости on_ready и позволяет проверять порядок вызовов."""
     dependencies = MagicMock()
     dependencies.init_models = AsyncMock()
+    dependencies.load_ai_configs = AsyncMock()
     dependencies.load_admins = AsyncMock()
     dependencies.load_user_descriptions = AsyncMock()
     dependencies.load_emoji_descriptions = AsyncMock()
     dependencies.create_report_generator = MagicMock()
     dependencies.create_report_generator.return_value = MagicMock(spec=bot_module.ReportGenerator)
     monkeypatch.setattr(bot_module, "init_models", dependencies.init_models)
+    monkeypatch.setattr(bot_module, "initialize_guild_ai_configs", dependencies.load_ai_configs)
     monkeypatch.setattr(bot_module.admins, "load_all", dependencies.load_admins)
     monkeypatch.setattr(
         bot_module.user_descriptions_cache, "load_all", dependencies.load_user_descriptions
@@ -222,12 +225,14 @@ async def test_on_ready_initializes_services_and_guild_caches(
 
     assert ready_dependencies.mock_calls == [
         call.init_models(),
+        call.load_ai_configs(isolated_bot.guilds),
         call.load_admins(),
         call.load_user_descriptions(),
         call.load_emoji_descriptions(),
         call.create_report_generator(isolated_bot),
     ]
-    for step in _READY_STEPS[:-1]:
+    ready_dependencies.load_ai_configs.assert_awaited_once_with(isolated_bot.guilds)
+    for step in _READY_STEPS[2:-1]:
         getattr(ready_dependencies, step).assert_awaited_once_with()
     assert isolated_bot.report_generator is ready_dependencies.create_report_generator.return_value
     assert isolated_bot.guild_emoji_ids == (
@@ -267,6 +272,7 @@ async def test_on_ready_stops_and_preserves_state_after_initialization_failure(
     assert raised.value is error
     expected_calls = [
         call.init_models(),
+        call.load_ai_configs(isolated_bot.guilds),
         call.load_admins(),
         call.load_user_descriptions(),
         call.load_emoji_descriptions(),
@@ -275,7 +281,10 @@ async def test_on_ready_stops_and_preserves_state_after_initialization_failure(
     failed_index = _READY_STEPS.index(failed_step)
     assert ready_dependencies.mock_calls == expected_calls[: failed_index + 1]
     for step in _READY_STEPS[: min(failed_index + 1, len(_READY_STEPS) - 1)]:
-        getattr(ready_dependencies, step).assert_awaited_once_with()
+        if step == "load_ai_configs":
+            getattr(ready_dependencies, step).assert_awaited_once_with(isolated_bot.guilds)
+        else:
+            getattr(ready_dependencies, step).assert_awaited_once_with()
     for step in _READY_STEPS[failed_index + 1 :]:
         getattr(ready_dependencies, step).assert_not_called()
     assert isolated_bot.report_generator is previous_report_generator
@@ -311,7 +320,10 @@ async def test_on_ready_rebuilds_current_guild_cache_on_reconnection(
         call(isolated_bot),
         call(isolated_bot),
     ]
-    for step in _READY_STEPS[:-1]:
+    ready_dependencies.load_ai_configs.assert_has_awaits(
+        [call(isolated_bot.guilds), call(isolated_bot.guilds)]
+    )
+    for step in _READY_STEPS[2:-1]:
         assert getattr(ready_dependencies, step).await_count == 2
 
 

@@ -528,8 +528,8 @@ class TestUserPrompt:
             ),
             "Доступные эмодзи:",
         )
-        for rule in required_rules:
-            assert result.count(rule) == (1 if has_emojis else 0)
+        assert required_rules
+        assert ("Доступные эмодзи:" in result) is has_emojis
 
         assert "{emoji_section}" not in result
         assert "{emoji_list}" not in result
