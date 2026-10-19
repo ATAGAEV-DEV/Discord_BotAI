@@ -101,8 +101,8 @@ async def ai_generate(
                     ChatCompletionUserMessageParam(role="user", content=msg["content"])
                 )
 
-        completion = await get_client().chat.completions.create(
-            model=get_model(),
+        completion = await get_client(server_id).chat.completions.create(
+            model=get_model(server_id),
             messages=openai_messages,
             temperature=0.8,
             top_p=0.8,

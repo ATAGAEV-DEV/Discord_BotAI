@@ -1,12 +1,6 @@
 from discord.ext import commands
 
 from app.core import handlers
-from app.core.ai_config import (
-    get_active_provider,
-    get_available_providers,
-    next_provider,
-    set_active_provider,
-)
 from app.core.bot import DisBot
 from app.core.checks import admin_or_owner
 from app.data import admins
@@ -79,34 +73,6 @@ class Admin(commands.Cog):
             f"✅ Список пользователей сервера обновлен! "
             f"Добавлено {len(all_server_users)} пользователей."
         )
-
-    @commands.command(name="ai")
-    @admin_or_owner()
-    async def ai_provider_command(self, ctx: commands.Context, name: str | None = None) -> None:
-        """Переключить AI-провайдера.
-
-        !ai — переключить на следующего провайдера
-        !ai name — переключить на указанного провайдера
-        """
-        available = get_available_providers()
-
-        if name is None:
-            new_provider = next_provider()
-            await ctx.send(
-                f"🔄 Провайдер переключён на **{new_provider}**\nДоступные: {', '.join(available)}"
-            )
-            return
-
-        if name not in available:
-            await ctx.send(f"❌ Провайдер **{name}** не найден.\nДоступные: {', '.join(available)}")
-            return
-
-        if name == get_active_provider():
-            await ctx.send(f"ℹ️ Провайдер **{name}** уже активен.")
-            return
-
-        set_active_provider(name)
-        await ctx.send(f"✅ Провайдер переключён на **{name}**")
 
 
 async def setup(bot: DisBot) -> None:

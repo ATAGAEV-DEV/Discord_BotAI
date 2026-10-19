@@ -101,14 +101,32 @@ class DualSessionProxy:
         remote_instance = instance.__class__(**state)
         self.remote.add(remote_instance)
 
-    async def commit(self) -> None:
-        """Фиксирует транзакцию в обеих БД."""
-        await self.local.commit()
+    async def commit(self, *, atomic: bool = False) -> None:
+        """Фиксирует транзакцию в обеих БД.
+
+        Старый best-effort режим сохраняется для существующих CRUD-операций.
+        ``atomic=True`` используется для новых credentials: сначала фиксируется
+        удалённая копия, затем локальная, а ошибка не скрывается и обе сессии
+        откатываются. Полную распределённую транзакцию PostgreSQL этот proxy не
+        заменяет, поэтому вызывающий код всё равно обязан обновлять cache только
+        после повторного чтения обеих копий.
+        """
+        if not atomic:
+            await self.local.commit()
+            try:
+                await self.remote.commit()
+            except Exception as e:
+                print(f"Ошибка коммита в удаленной БД: {e}")
+                await self.remote.rollback()
+            return
+
         try:
             await self.remote.commit()
-        except Exception as e:
-            print(f"Ошибка коммита в удаленной БД: {e}")
+            await self.local.commit()
+        except Exception:
+            await self.local.rollback()
             await self.remote.rollback()
+            raise
 
     async def rollback(self) -> None:
         """Откатывает транзакцию в обеих БД."""
@@ -155,7 +173,31 @@ async def async_session() -> AsyncGenerator[DualSessionProxy]:
 class Base(AsyncAttrs, DeclarativeBase):
     """Базовый класс для всех моделей, поддерживающий асинхронные атрибуты."""
 
-    pass
+
+class GuildAIConfig(Base):
+    """Полная Polza-конфигурация AI для одной Discord-гильдии."""
+
+    __tablename__ = "guild_ai_configs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    guild_id = Column(BigInteger, nullable=False, unique=True, index=True)
+    provider = Column(String(50), nullable=False)
+    api_url = Column(String(500), nullable=False)
+    token = Column(String(1000), nullable=False)
+    chat_model = Column(String(255), nullable=False)
+    mini_model = Column(String(255), nullable=False)
+    embedding_provider = Column(String(50), nullable=False)
+    embedding_api_url = Column(String(500), nullable=False)
+    embedding_token = Column(String(1000), nullable=False)
+    embedding_model = Column(String(255), nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (Index("idx_guild_ai_config_guild", "guild_id"),)
+
+    def __repr__(self) -> str:
+        """Не включает chat/embedding credentials в диагностику ORM."""
+        return f"<GuildAIConfig(guild_id={self.guild_id})>"
 
 
 class User(Base):

@@ -2,12 +2,13 @@ import asyncio
 from typing import Any
 
 import chromadb
-from llama_index.core import Document, Settings, StorageContext, VectorStoreIndex
+from llama_index.core import Document, StorageContext, VectorStoreIndex
 from llama_index.core.node_parser import SimpleNodeParser
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
-from app.core.ai_config import get_client, get_embedding_config
+from app.core.ai_config import get_embedding_model
+from app.data import guild_ai_config_cache
 
 QUERY_TIMEOUT = 30.0
 INDEX_TIMEOUT = 25.0
@@ -21,20 +22,20 @@ class LlamaIndexManager:
 
     def __init__(self) -> None:
         """Инициализирует менеджер LlamaIndex."""
-        self.custom_client = get_client()
-
-        embedding_config = get_embedding_config()
-        self.embed_model = OpenAIEmbedding(
-            api_key=embedding_config["api_key"],
-            api_base=embedding_config["base_url"],
-            model=embedding_config["model"],
-        )
-
+        self.custom_client = None
         self.node_parser = SimpleNodeParser.from_defaults(chunk_size=128, chunk_overlap=16)
         self.db = chromadb.PersistentClient(path="./chroma_db")
 
-        Settings.embed_model = self.embed_model
-        Settings.node_parser = self.node_parser
+    def _get_embedding_model(self, server_id: int | None) -> OpenAIEmbedding | None:
+        """Возвращает embedding model конкретной гильдии после bootstrap.
+
+        До загрузки bot cache изолированные unit-тесты могут строить mock-index
+        без реального клиента. В работающем боте ``is_loaded()`` истинно после
+        ``on_ready``, поэтому cache miss остаётся fail-closed.
+        """
+        if server_id is not None and not guild_ai_config_cache.is_loaded():
+            return None
+        return get_embedding_model(server_id)
 
     def get_server_collection(self, server_id: int) -> Any:
         """Получить или создать коллекцию для сервера."""
@@ -80,13 +81,19 @@ class LlamaIndexManager:
             collection = self.get_server_collection(server_id)
             vector_store = ChromaVectorStore(chroma_collection=collection)
             storage_context = StorageContext.from_defaults(vector_store=vector_store)
+            embed_model = self._get_embedding_model(server_id)
+            index_kwargs = {
+                "storage_context": storage_context,
+                "show_progress": False,
+            }
+            if embed_model is not None:
+                index_kwargs["embed_model"] = embed_model
 
             index = await asyncio.wait_for(
                 asyncio.to_thread(
                     VectorStoreIndex.from_documents,
                     documents,
-                    storage_context=storage_context,
-                    show_progress=False,
+                    **index_kwargs,
                 ),
                 timeout=INDEX_TIMEOUT,
             )
@@ -94,8 +101,8 @@ class LlamaIndexManager:
         except TimeoutError:
             print(f"Таймаут {INDEX_TIMEOUT} сек. при индексации сообщений сервера {server_id}")
             return None
-        except Exception as e:
-            print(f"Ошибка индексации сообщений: {e}")
+        except Exception as exc:
+            print(f"Ошибка индексации сообщений: {type(exc).__name__}")
             return None
 
     async def query_relevant_context(self, server_id: int, query: str, limit: int = 8) -> list[str]:
@@ -103,8 +110,12 @@ class LlamaIndexManager:
         try:
             collection = self.get_server_collection(server_id)
             vector_store = ChromaVectorStore(chroma_collection=collection)
+            embed_model = self._get_embedding_model(server_id)
+            index_kwargs: dict[str, Any] = {}
+            if embed_model is not None:
+                index_kwargs["embed_model"] = embed_model
             index = await asyncio.wait_for(
-                asyncio.to_thread(VectorStoreIndex.from_vector_store, vector_store),
+                asyncio.to_thread(VectorStoreIndex.from_vector_store, vector_store, **index_kwargs),
                 timeout=QUERY_TIMEOUT,
             )
 
@@ -118,8 +129,8 @@ class LlamaIndexManager:
         except TimeoutError:
             print(f"Таймаут {QUERY_TIMEOUT} сек. при поиске контекста для сервера {server_id}")
             return []
-        except Exception as e:
-            print(f"Ошибка поиска контекста: {e}")
+        except Exception as exc:
+            print(f"Ошибка поиска контекста: {type(exc).__name__}")
             return []
 
     async def index_server_users(self, server_id: int, users: list[str]) -> Any:
@@ -137,13 +148,19 @@ class LlamaIndexManager:
 
             vector_store = ChromaVectorStore(chroma_collection=collection)
             storage_context = StorageContext.from_defaults(vector_store=vector_store)
+            embed_model = self._get_embedding_model(server_id)
+            index_kwargs = {
+                "storage_context": storage_context,
+                "show_progress": False,
+            }
+            if embed_model is not None:
+                index_kwargs["embed_model"] = embed_model
 
             index = await asyncio.wait_for(
                 asyncio.to_thread(
                     VectorStoreIndex.from_documents,
                     [document],
-                    storage_context=storage_context,
-                    show_progress=False,
+                    **index_kwargs,
                 ),
                 timeout=INDEX_TIMEOUT,
             )
@@ -153,6 +170,6 @@ class LlamaIndexManager:
         except TimeoutError:
             print(f"Таймаут при индексации пользователей сервера {server_id}")
             return None
-        except Exception as e:
-            print(f"Ошибка индексации пользователей сервера: {e}")
+        except Exception as exc:
+            print(f"Ошибка индексации пользователей сервера: {type(exc).__name__}")
             return None

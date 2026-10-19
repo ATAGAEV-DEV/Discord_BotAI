@@ -9,11 +9,19 @@ from app.core.config import (
     REPORT_TIME_LIMIT,
 )
 from app.core.scheduler import start_scheduler
-from app.data import admins, emoji_descriptions_cache, user_descriptions_cache
-from app.data.models import init_models
+from app.data import admins, emoji_descriptions_cache, guild_ai_config_cache, user_descriptions_cache
+from app.data.models import async_session, init_models
 from app.services.daily_report import ReportGenerator
 from app.services.youtube_notifier import YouTubeNotifier
 from app.tools.utils import contains_only_urls
+
+
+async def initialize_guild_ai_configs(guilds: list[discord.Guild]) -> None:
+    """Загружает и bootstrap-ит полные AI-настройки для guilds."""
+    async with async_session() as session:
+        await guild_ai_config_cache.load_all(session)
+        for guild in guilds:
+            await guild_ai_config_cache.ensure(session, guild.id)
 
 
 class DisBot(commands.Bot):
@@ -57,6 +65,7 @@ class DisBot(commands.Bot):
     async def on_ready(self) -> None:
         """Инициализация при подключении бота к Discord."""
         await init_models()
+        await initialize_guild_ai_configs(self.guilds)
         await admins.load_all()
         await user_descriptions_cache.load_all()
         await emoji_descriptions_cache.load_all()

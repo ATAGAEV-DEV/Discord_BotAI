@@ -139,15 +139,16 @@ class ReportGenerator:
             ]
 
             try:
-                response = await get_client().chat.completions.create(
-                    model=get_mini_model(),
+                guild_id = channel.guild.id if getattr(channel, "guild", None) else None
+                response = await get_client(guild_id).chat.completions.create(
+                    model=get_mini_model(guild_id),
                     messages=message_payload,
                     temperature=0.0,
                     top_p=0.01,
                 )
                 report = response.choices[0].message.content or "Пустой ответ от AI"
-            except Exception as e:
-                print(f"Ошибка генерации отчета: {e}")
+            except Exception as exc:
+                print(f"Ошибка генерации отчета: {type(exc).__name__}")
                 return
 
             if "ID:" in report:
