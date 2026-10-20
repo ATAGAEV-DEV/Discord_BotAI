@@ -180,11 +180,10 @@ async def update_model(
 ) -> None:
     """Обновляет chat_model или mini_model для гильдии.
 
-    ``field`` должен быть ``'chat_model'``, ``'mini_model'`` или
-    ``'embedding_model'``.
+    ``field`` должен быть ``'chat_model'`` или ``'mini_model'``.
     Выбрасывает ``GuildAIConfigError`` если запись не найдена или field некорректен.
     """
-    if field not in {"chat_model", "mini_model", "embedding_model"}:
+    if field not in {"chat_model", "mini_model"}:
         raise GuildAIConfigError(f"Некорректное поле модели: {field!r}")
     if not isinstance(model_name, str) or not model_name.strip():
         raise GuildAIConfigError(f"Модель {field} не задана")

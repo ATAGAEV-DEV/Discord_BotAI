@@ -149,6 +149,8 @@ async def test_model_set_invalid_type() -> None:
     text = ctx.send.await_args.args[0]
     assert "❌" in text
     assert "chat" in text
+    assert "mini" in text
+    assert "embedding" not in text
 
 
 @pytest.mark.asyncio
@@ -208,24 +210,20 @@ async def test_model_set_mini_success() -> None:
 
 
 @pytest.mark.asyncio
-async def test_model_set_embedding_success() -> None:
-    """model_set embedding обновляет embedding_model."""
+async def test_model_set_embedding_is_rejected() -> None:
+    """model_set не позволяет заменять embedding-модель."""
     bot = _make_bot()
     cog = AIModels(bot)
-    ctx = _make_ctx(guild_id=42)
+    ctx = _make_ctx()
 
-    with patch("app.cogs.ai_models.async_session") as mock_cm, \
-         patch("app.cogs.ai_models.ai_models.exists", new_callable=AsyncMock, return_value=True), \
-         patch("app.cogs.ai_models.update_model", new_callable=AsyncMock) as update_model:
-        mock_cm.return_value.__aenter__ = AsyncMock(return_value=MagicMock())
-        mock_cm.return_value.__aexit__ = AsyncMock(return_value=False)
+    with patch("app.cogs.ai_models.update_model", new_callable=AsyncMock) as update_model:
         await cog.model_set_command.callback(cog, ctx, model_type="embedding", name="embed-x")
 
-    update_model.assert_awaited_once()
-    assert update_model.await_args.args[2:] == ("embedding_model", "embed-x")
+    update_model.assert_not_awaited()
     text = ctx.send.await_args.args[0]
-    assert "✅" in text
-    assert "embed-x" in text
+    assert "❌" in text
+    assert "chat" in text
+    assert "mini" in text
 
 
 @pytest.mark.asyncio

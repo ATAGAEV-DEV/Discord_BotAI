@@ -94,7 +94,7 @@ def create_help_embed(prefix: str) -> discord.Embed:
             f"`{prefix}model_list` - показать список AI-моделей\n"
             f"`{prefix}model_add [имя]` - добавить модель\n"
             f"`{prefix}model_remove [имя]` - удалить модель\n"
-            f"`{prefix}model_set [chat|mini|embedding] [имя]` - выбрать модель\n"
+            f"`{prefix}model_set [chat|mini] [имя]` - выбрать модель\n"
             "*(только для администраторов)*"
         ),
         inline=False,

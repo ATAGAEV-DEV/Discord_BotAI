@@ -111,6 +111,9 @@ def test_help_embed_contains_current_prefix() -> None:
 
     assert "`~help`" in embed.fields[0].value
     assert "`~youtube" in embed.fields[1].value
+    model_field = next(field for field in embed.fields if field.name == "🤖 Управление AI-моделями")
+    assert "`~model_set [chat|mini] [имя]`" in model_field.value
+    assert "model_set [chat|mini|embedding]" not in model_field.value
     assert "`~admin_add" in embed.fields[-1].value
     assert all("`!" not in field.value for field in embed.fields)
 
