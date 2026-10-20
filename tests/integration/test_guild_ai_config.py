@@ -11,9 +11,11 @@ from tests.integration.conftest import Databases
 def _settings() -> AISettings:
     """Создаёт полные credentials для тестовой гильдии."""
     return AISettings(
+        provider="custom-chat-provider",
         token="integration-chat-secret",
         embedding_token="integration-embedding-secret",
         api_url="https://chat.integration.example/v1",
+        embedding_provider="custom-embedding-provider",
         embedding_api_url="https://embedding.integration.example/v1",
         chat_model="integration-chat-model",
         mini_model="integration-mini-model",
@@ -54,9 +56,11 @@ async def test_existing_row_is_not_overwritten_by_environment(
 
     stored = _settings()
     candidate = AISettings(
+        provider="other-chat-provider",
         token="different-chat-secret",
         embedding_token="different-embedding-secret",
         api_url="https://other-chat.example/v1",
+        embedding_provider="other-embedding-provider",
         embedding_api_url="https://other-embedding.example/v1",
     )
     async with async_session() as session:

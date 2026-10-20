@@ -15,7 +15,6 @@ from typing import Any
 from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from app.core.config import POLZA_PROVIDER
 from app.data.models import Base, engine
 
 
@@ -111,23 +110,19 @@ async def _backfill(
 
     for row in rows:
         guild_id = int(row["guild_id"])
-        if row["provider"] != POLZA_PROVIDER or (
-            isinstance(row["embedding_provider"], str)
-            and row["embedding_provider"].strip()
-            and row["embedding_provider"] != POLZA_PROVIDER
-        ):
-            raise GuildAIConfigMigrationError(
-                f"Миграция отклонена: неподдерживаемый provider для гильдии {guild_id}"
-            )
         token = _secret(secret_mapping, guild_id, migration_token)
-        url = _url(url_mapping, guild_id, migration_url)
+        url = _url(url_mapping, guild_id, migration_url) or _url(
+            None,
+            guild_id,
+            row["api_url"],
+        )
         if not isinstance(row["embedding_provider"], str) or not row["embedding_provider"].strip():
             await connection.execute(
                 text(
                     "UPDATE guild_ai_configs SET embedding_provider = :embedding_provider "
                     "WHERE guild_id = :guild_id"
                 ),
-                {"embedding_provider": POLZA_PROVIDER, "guild_id": guild_id},
+                {"embedding_provider": row["provider"], "guild_id": guild_id},
             )
             changed_guilds.add(guild_id)
         if not isinstance(row["embedding_token"], str) or not row["embedding_token"].strip():
@@ -176,15 +171,13 @@ async def _backfill(
     snapshot: dict[int, tuple[Any, ...]] = {}
     for row in final.mappings().all():
         guild_id = int(row["guild_id"])
-        if row["provider"] != POLZA_PROVIDER or row["embedding_provider"] != POLZA_PROVIDER:
-            raise GuildAIConfigMigrationError(
-                f"Миграция отклонена: неподдерживаемый provider для гильдии {guild_id}"
-            )
         required = (
+            row["provider"],
             row["api_url"],
             row["token"],
             row["chat_model"],
             row["mini_model"],
+            row["embedding_provider"],
             row["embedding_api_url"],
             row["embedding_token"],
             row["embedding_model"],

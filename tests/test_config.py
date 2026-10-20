@@ -11,6 +11,7 @@ from app.core.config import (
     get_command_prefix,
     get_database_settings,
     get_scheduler_settings,
+    validate_ai_settings,
 )
 
 
@@ -35,11 +36,11 @@ def test_empty_database_schema_keeps_public_fallback(monkeypatch: pytest.MonkeyP
     assert get_database_settings().schema == ""
 
 
-def test_ai_settings_default_when_environment_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    """При отсутствии AI-переменных используются значения по умолчанию."""
+def test_ai_settings_uses_chat_values_for_missing_embedding_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Отсутствующие embedding provider и URL наследуются от chat-настроек."""
     for name in (
-        "AI_PROVIDER",
-        "AI_API_URL",
         "AI_MODEL",
         "AI_MODEL_MINI",
         "AI_EMBEDDING_PROVIDER",
@@ -49,37 +50,44 @@ def test_ai_settings_default_when_environment_is_missing(monkeypatch: pytest.Mon
         "AI_EMBEDDING_TOKEN",
     ):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AI_PROVIDER", "custom-chat-provider")
+    monkeypatch.setenv("AI_API_URL", "https://chat.example/v1")
 
-    assert get_ai_settings() == AISettings()
+    settings = get_ai_settings()
+
+    assert settings.provider == "custom-chat-provider"
+    assert settings.api_url == "https://chat.example/v1"
+    assert settings.embedding_provider == settings.provider
+    assert settings.embedding_api_url == settings.api_url
 
 
 def test_ai_settings_environment_overrides_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     """Значения AI из окружения имеют приоритет над значениями по умолчанию."""
-    monkeypatch.setenv("AI_PROVIDER", "polza")
+    monkeypatch.setenv("AI_PROVIDER", "custom-chat-provider")
     monkeypatch.setenv("AI_API_URL", "https://chat.example/v1")
     monkeypatch.setenv("AI_MODEL", "custom-model")
     monkeypatch.setenv("AI_MODEL_MINI", "custom-mini-model")
-    monkeypatch.setenv("AI_EMBEDDING_PROVIDER", "polza")
+    monkeypatch.setenv("AI_EMBEDDING_PROVIDER", "custom-embedding-provider")
     monkeypatch.setenv("AI_EMBEDDING_API_URL", "https://embedding.example/v1")
     monkeypatch.setenv("AI_EMBEDDING_MODEL", "custom-embedding-model")
     monkeypatch.setenv("AI_TOKEN", "chat-secret")
     monkeypatch.setenv("AI_EMBEDDING_TOKEN", "embedding-secret")
 
     assert get_ai_settings() == AISettings(
-        provider="polza",
+        provider="custom-chat-provider",
         api_url="https://chat.example/v1",
         token="chat-secret",
         model="custom-model",
         mini_model="custom-mini-model",
-        embedding_provider="polza",
+        embedding_provider="custom-embedding-provider",
         embedding_api_url="https://embedding.example/v1",
         embedding_token="embedding-secret",
         embedding_model="custom-embedding-model",
     )
 
 
-def test_empty_ai_environment_uses_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Пустые AI-переменные считаются отсутствующими."""
+def test_empty_chat_environment_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Без provider и URL конфигурация не получает vendor-specific fallback."""
     for name in (
         "AI_PROVIDER",
         "AI_API_URL",
@@ -93,7 +101,24 @@ def test_empty_ai_environment_uses_defaults(monkeypatch: pytest.MonkeyPatch) -> 
     ):
         monkeypatch.setenv(name, "")
 
-    assert get_ai_settings() == AISettings()
+    with pytest.raises(ValueError, match="provider|api_url"):
+        get_ai_settings()
+
+
+def test_missing_models_are_kept_unconfigured(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Модели без env не получают vendor-specific fallback."""
+    monkeypatch.setenv("AI_PROVIDER", "custom-chat-provider")
+    monkeypatch.setenv("AI_API_URL", "https://chat.example/v1")
+    for name in ("AI_MODEL", "AI_MODEL_MINI", "AI_EMBEDDING_MODEL"):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = get_ai_settings()
+
+    assert settings.chat_model is None
+    assert settings.mini_model is None
+    assert settings.embedding_model is None
+    with pytest.raises(ValueError, match="chat_model"):
+        validate_ai_settings(settings, require_tokens=False)
 
 
 def test_scheduler_settings_defaults() -> None:

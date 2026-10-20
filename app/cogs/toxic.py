@@ -105,8 +105,9 @@ class Toxic(commands.Cog):
 
         async with ctx.typing():
             guild_id = ctx.guild.id if ctx.guild else None
+            model = get_model(guild_id)
             completion = await get_client(guild_id).chat.completions.create(
-                model=get_model(guild_id),
+                model=model,
                 messages=msgs,
                 temperature=0.9,
                 max_tokens=3000,

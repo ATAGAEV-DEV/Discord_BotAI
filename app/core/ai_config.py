@@ -1,4 +1,4 @@
-"""Polza-only runtime и независимые client caches по гильдиям."""
+"""Provider-agnostic runtime и независимые client caches по гильдиям."""
 
 from __future__ import annotations
 
@@ -7,9 +7,7 @@ from typing import TYPE_CHECKING
 from openai import AsyncOpenAI
 
 from app.core.config import (
-    POLZA_API_URL,
-    POLZA_PROVIDER,
-    PROVIDERS,
+    AIConfigurationError,
     AISettings,
     get_ai_settings,
     validate_ai_settings,
@@ -33,6 +31,7 @@ def _settings_for(
     settings: AISettings | None,
     *,
     require_tokens: bool,
+    require_models: bool = False,
 ) -> AISettings:
     """Разрешает настройки только из явного guild cache или env для non-guild API."""
     if settings is None:
@@ -41,20 +40,23 @@ def _settings_for(
             if guild_id is not None
             else get_ai_settings()
         )
-    return validate_ai_settings(settings, require_tokens=require_tokens)
+    return validate_ai_settings(
+        settings,
+        require_tokens=require_tokens,
+        require_models=require_models,
+    )
 
 
 def get_provider_config(name: str | None = None, *, guild_id: int | None = None) -> dict[str, str]:
-    """Возвращает внутренний Polza-конфиг для совместимых старых импортов.
+    """Возвращает chat-конфиг для совместимых старых импортов.
 
-    Другие provider names намеренно не принимаются. Этот helper не используется
-    административным API и не печатает credentials.
+    ``name`` сохранён как legacy-параметр. Provider registry больше не
+    используется: имя и URL берутся из настроек текущего runtime.
     """
-    if name not in (None, POLZA_PROVIDER):
-        raise ValueError("Поддерживается только provider polza")
+    del name
     settings = _settings_for(guild_id, None, require_tokens=False)
     if not settings.token or not settings.token.strip():
-        raise ValueError("Отсутствует chat token")
+        raise AIConfigurationError("Отсутствует chat token")
     return {
         "api_key": settings.token or "",
         "base_url": settings.api_url,
@@ -68,11 +70,12 @@ def get_embedding_config(
     settings: AISettings | None = None,
 ) -> dict[str, str]:
     """Возвращает отдельные embedding URL, token и model для runtime."""
-    if provider not in (None, POLZA_PROVIDER):
-        raise ValueError("Поддерживается только embedding provider polza")
+    del provider
     resolved = _settings_for(guild_id, settings, require_tokens=False)
     if not resolved.embedding_token or not resolved.embedding_token.strip():
-        raise ValueError("Отсутствует embedding token")
+        raise AIConfigurationError("Отсутствует embedding token")
+    if resolved.embedding_model is None:
+        raise AIConfigurationError("Модель embedding_model не задана")
     return {
         "api_key": resolved.embedding_token or "",
         "base_url": resolved.embedding_api_url,
@@ -87,10 +90,10 @@ def get_client(
 ) -> AsyncOpenAI:
     """Возвращает chat client по ключу ``(guild_id, api_url, token)``."""
     if isinstance(guild_id, str):
-        raise TypeError("Передавайте guild_id, а provider switching отключён")
+        raise TypeError("guild_id должен быть целым числом или None")
     resolved = _settings_for(guild_id, settings, require_tokens=False)
     if not resolved.token or not resolved.token.strip():
-        raise ValueError("Отсутствует chat token")
+        raise AIConfigurationError("Отсутствует chat token")
     key: ChatClientKey = (guild_id, resolved.api_url, resolved.token or "")
     client = _chat_clients.get(key)
     if client is None:
@@ -107,7 +110,7 @@ def get_embedding_client(
     """Возвращает embedding client по независимому embedding key."""
     resolved = _settings_for(guild_id, settings, require_tokens=False)
     if not resolved.embedding_token or not resolved.embedding_token.strip():
-        raise ValueError("Отсутствует embedding token")
+        raise AIConfigurationError("Отсутствует embedding token")
     key: EmbeddingClientKey = (
         guild_id,
         resolved.embedding_api_url,
@@ -133,7 +136,9 @@ def get_embedding_model(
 
     resolved = _settings_for(guild_id, settings, require_tokens=False)
     if not resolved.embedding_token or not resolved.embedding_token.strip():
-        raise ValueError("Отсутствует embedding token")
+        raise AIConfigurationError("Отсутствует embedding token")
+    if resolved.embedding_model is None:
+        raise AIConfigurationError("Модель embedding_model не задана")
     get_embedding_client(guild_id, settings=resolved)
     key = (
         guild_id,
@@ -205,34 +210,45 @@ def clear_embedding_client_cache() -> None:
 
 
 def get_active_provider() -> str:
-    """Возвращает единственный разрешённый provider."""
-    return POLZA_PROVIDER
+    """Возвращает provider из текущей конфигурации."""
+    return get_ai_settings().provider
 
 
 def set_active_provider(name: str) -> None:
-    """Запрещает переключение provider; Polza остаётся единственным runtime."""
-    if name != POLZA_PROVIDER:
-        raise ValueError("Переключение provider отключено: поддерживается только polza")
+    """Проверяет legacy provider name без фиксированного allowlist.
+
+    Persistent provider selection выполняется через AI-конфигурацию гильдии
+    или переменные окружения; helper оставлен для совместимых импортов.
+    """
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("Provider не может быть пустым")
 
 
 def get_available_providers() -> list[str]:
-    """Возвращает только Polza."""
-    return [POLZA_PROVIDER]
+    """Возвращает provider из текущей конфигурации без фиксированного списка."""
+    provider = get_active_provider()
+    return [provider] if provider else []
 
 
 def next_provider() -> str:
-    """Legacy API без циклического выбора provider."""
-    raise ValueError("Переключение provider отключено: поддерживается только polza")
+    """Возвращает текущий provider для совместимости со старым API."""
+    return get_active_provider()
 
 
 def get_model(guild_id: int | None = None, *, settings: AISettings | None = None) -> str:
     """Возвращает chat model нужной гильдии."""
-    return _settings_for(guild_id, settings, require_tokens=False).chat_model
+    resolved = _settings_for(guild_id, settings, require_tokens=False)
+    if resolved.chat_model is None:
+        raise AIConfigurationError("Модель chat_model не задана")
+    return resolved.chat_model
 
 
 def get_mini_model(guild_id: int | None = None, *, settings: AISettings | None = None) -> str:
     """Возвращает mini-model нужной гильдии."""
-    return _settings_for(guild_id, settings, require_tokens=False).mini_model
+    resolved = _settings_for(guild_id, settings, require_tokens=False)
+    if resolved.mini_model is None:
+        raise AIConfigurationError("Модель mini_model не задана")
+    return resolved.mini_model
 
 
 def set_model(model: str, *, guild_id: int | None = None) -> None:
@@ -244,9 +260,6 @@ def set_model(model: str, *, guild_id: int | None = None) -> None:
 
 
 __all__ = [
-    "POLZA_API_URL",
-    "POLZA_PROVIDER",
-    "PROVIDERS",
     "clear_chat_client_cache",
     "clear_client_caches",
     "clear_embedding_client_cache",

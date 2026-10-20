@@ -5,6 +5,7 @@ from discord.ext import commands
 
 from app.core import handlers
 from app.core.bot import DisBot
+from app.core.config import AIConfigurationError
 
 AI_COOLDOWN_SECONDS = 5.0
 
@@ -38,15 +39,19 @@ class ErrorHandler(commands.Cog):
             emoji_ids = self.bot.guild_emoji_ids.get(server_id, {}) if server_id else {}
 
             async with ctx.typing():
-                response = await handlers.ai_generate(
-                    ctx.message.content,
-                    server_id,
-                    ctx.author.name,
-                    limit=self.bot.context_limit,
-                    emoji_ids=emoji_ids,
-                    mentions={user.id: user.name for user in ctx.message.mentions},
-                    channel_id=ctx.channel.id,
-                )
+                try:
+                    response = await handlers.ai_generate(
+                        ctx.message.content,
+                        server_id,
+                        ctx.author.name,
+                        limit=self.bot.context_limit,
+                        emoji_ids=emoji_ids,
+                        mentions={user.id: user.name for user in ctx.message.mentions},
+                        channel_id=ctx.channel.id,
+                    )
+                except AIConfigurationError as exc:
+                    await ctx.send(f"❌ AI-конфигурация не настроена: {exc}")
+                    return
                 await ctx.send(f"{ctx.author.mention} {response}")
         elif isinstance(error, commands.CommandOnCooldown):
             await ctx.send(
@@ -64,6 +69,9 @@ class ErrorHandler(commands.Cog):
             await ctx.send("❌ Эта команда недоступна в личных сообщениях.")
         elif isinstance(original_error, (ConnectionError, TimeoutError)):
             await ctx.send("❌ Проблема с сетью. Попробуйте позже.")
+
+        elif isinstance(original_error, AIConfigurationError):
+            await ctx.send(f"❌ AI-конфигурация не настроена: {original_error}")
 
         else:
             await ctx.send("❌ Произошла ошибка при выполнении команды.")

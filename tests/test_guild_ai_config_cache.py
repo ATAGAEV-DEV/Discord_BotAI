@@ -12,9 +12,11 @@ from app.data.repositories import guild_ai_config
 def _settings(guild_id: int) -> AISettings:
     """Создаёт настройки cache entry."""
     return AISettings(
+        provider="custom-chat-provider",
         token=f"chat-{guild_id}",
         embedding_token=f"embedding-{guild_id}",
         api_url=f"https://chat-{guild_id}.example/v1",
+        embedding_provider="custom-embedding-provider",
         embedding_api_url=f"https://embedding-{guild_id}.example/v1",
     )
 

@@ -57,13 +57,17 @@ class AIModels(commands.Cog):
     async def model_set_command(
         self, ctx: commands.Context, model_type: str, *, name: str
     ) -> None:
-        """Выбрать модель для сервера. Использование: !model_set <chat|mini> <имя>"""
+        """Выбрать модель для сервера. Использование: !model_set <chat|mini|embedding> <имя>"""
         model_type = model_type.lower().strip()
-        if model_type not in {"chat", "mini"}:
-            await ctx.send("❌ Тип модели должен быть `chat` или `mini`.")
+        if model_type not in {"chat", "mini", "embedding"}:
+            await ctx.send("❌ Тип модели должен быть `chat`, `mini` или `embedding`.")
             return
 
-        field = "chat_model" if model_type == "chat" else "mini_model"
+        field = {
+            "chat": "chat_model",
+            "mini": "mini_model",
+            "embedding": "embedding_model",
+        }[model_type]
 
         async with async_session() as session:
             if not await ai_models.exists(session, name):
@@ -75,7 +79,11 @@ class AIModels(commands.Cog):
                 await ctx.send(f"❌ {exc}")
                 return
 
-        label = "основная модель" if field == "chat_model" else "мини-модель"
+        label = {
+            "chat_model": "основная модель",
+            "mini_model": "мини-модель",
+            "embedding_model": "embedding-модель",
+        }[field]
         await ctx.send(f"✅ {label.capitalize()} для сервера установлена: `{name}`.")
 
 

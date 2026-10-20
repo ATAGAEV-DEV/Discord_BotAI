@@ -40,7 +40,7 @@ def _row_to_settings(row: GuildAIConfig) -> AISettings:
     )
     try:
         return validate_ai_settings(settings)
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
         raise GuildAIConfigError(
             f"Некорректная AI-конфигурация гильдии {row.guild_id}: {exc}"
         ) from None
@@ -83,22 +83,19 @@ def _coerce_environment_settings(
         """Читает canonical field или его environment alias."""
         return environment_settings.get(name) or environment_settings.get(env_name)
 
+    provider = value("provider", "AI_PROVIDER") or defaults.provider
+    api_url = value("api_url", "AI_API_URL") or defaults.api_url
+
     return AISettings(
-        provider=value("provider", "AI_PROVIDER") or defaults.provider,
-        api_url=value("api_url", "AI_API_URL") or defaults.api_url,
+        provider=provider,
+        api_url=api_url,
         token=value("token", "AI_TOKEN"),
-        chat_model=value("chat_model", "AI_MODEL") or defaults.chat_model,
-        mini_model=value("mini_model", "AI_MODEL_MINI") or defaults.mini_model,
-        embedding_provider=(
-            value("embedding_provider", "AI_EMBEDDING_PROVIDER") or defaults.embedding_provider
-        ),
-        embedding_api_url=(
-            value("embedding_api_url", "AI_EMBEDDING_API_URL") or defaults.embedding_api_url
-        ),
+        chat_model=value("chat_model", "AI_MODEL"),
+        mini_model=value("mini_model", "AI_MODEL_MINI"),
+        embedding_provider=value("embedding_provider", "AI_EMBEDDING_PROVIDER") or provider,
+        embedding_api_url=value("embedding_api_url", "AI_EMBEDDING_API_URL") or api_url,
         embedding_token=value("embedding_token", "AI_EMBEDDING_TOKEN"),
-        embedding_model=(
-            value("embedding_model", "AI_EMBEDDING_MODEL") or defaults.embedding_model
-        ),
+        embedding_model=value("embedding_model", "AI_EMBEDDING_MODEL"),
     )
 
 
@@ -113,11 +110,13 @@ async def _ensure_unlocked(
         return existing
 
     env = _coerce_environment_settings(environment_settings)
-    if not env.embedding_token:
+    try:
+        env = validate_ai_settings(env)
+    except (TypeError, ValueError) as exc:
         raise GuildAIConfigError(
             f"Невозможно создать AI-конфигурацию гильдии {guild_id}: "
-            "embedding token не задан в переменных окружения"
-        )
+            f"{exc}"
+        ) from None
 
     new_row = GuildAIConfig(
         guild_id=guild_id,
@@ -181,11 +180,14 @@ async def update_model(
 ) -> None:
     """Обновляет chat_model или mini_model для гильдии.
 
-    ``field`` должен быть ``'chat_model'`` или ``'mini_model'``.
+    ``field`` должен быть ``'chat_model'``, ``'mini_model'`` или
+    ``'embedding_model'``.
     Выбрасывает ``GuildAIConfigError`` если запись не найдена или field некорректен.
     """
-    if field not in {"chat_model", "mini_model"}:
+    if field not in {"chat_model", "mini_model", "embedding_model"}:
         raise GuildAIConfigError(f"Некорректное поле модели: {field!r}")
+    if not isinstance(model_name, str) or not model_name.strip():
+        raise GuildAIConfigError(f"Модель {field} не задана")
 
     from sqlalchemy import update as sa_update
 
@@ -218,6 +220,34 @@ async def update_provider(
     """
     if provider_type not in {"chat", "embedding"}:
         raise GuildAIConfigError(f"Некорректный тип провайдера: {provider_type!r}")
+    for field_name, value in (("provider", name), ("api_url", api_url), ("token", token)):
+        if not isinstance(value, str) or not value.strip():
+            raise GuildAIConfigError(f"Поле {field_name} не задано")
+
+    current = await get(session, guild_id)
+    if current is None:
+        raise GuildAIConfigError(f"AI-конфигурация гильдии {guild_id} не найдена")
+
+    name = name.strip()
+    api_url = api_url.strip()
+    token = token.strip()
+    candidate = AISettings(
+        provider=name if provider_type == "chat" else current.provider,
+        api_url=api_url if provider_type == "chat" else current.api_url,
+        token=token if provider_type == "chat" else current.token,
+        chat_model=current.chat_model,
+        mini_model=current.mini_model,
+        embedding_provider=name if provider_type == "embedding" else current.embedding_provider,
+        embedding_api_url=api_url if provider_type == "embedding" else current.embedding_api_url,
+        embedding_token=token if provider_type == "embedding" else current.embedding_token,
+        embedding_model=current.embedding_model,
+    )
+    try:
+        validate_ai_settings(candidate)
+    except (TypeError, ValueError) as exc:
+        raise GuildAIConfigError(
+            f"Невозможно обновить AI-конфигурацию гильдии {guild_id}: {exc}"
+        ) from None
 
     if provider_type == "chat":
         values = {"provider": name, "api_url": api_url, "token": token}

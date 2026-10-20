@@ -15,7 +15,17 @@ def _guild_ai_settings() -> None:
     """Подготавливает полную guild-конфигурацию для unit AI-вызовов."""
     guild_ai_config_cache._cache.update(
         {
-            guild_id: AISettings(token="chat-secret", embedding_token="embedding-secret")
+            guild_id: AISettings(
+                provider="custom-chat-provider",
+                api_url="https://chat.example/v1",
+                token="chat-secret",
+                chat_model="chat-model",
+                mini_model="mini-model",
+                embedding_provider="custom-embedding-provider",
+                embedding_api_url="https://embedding.example/v1",
+                embedding_token="embedding-secret",
+                embedding_model="embedding-model",
+            )
             for guild_id in (123, 456, 789, 12345)
         }
     )

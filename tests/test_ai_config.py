@@ -1,4 +1,4 @@
-"""Unit-тесты Polza runtime и независимых client caches."""
+"""Unit-тесты provider-agnostic runtime и независимых client caches."""
 
 import pytest
 from openai import AsyncOpenAI
@@ -8,7 +8,9 @@ from app.core.ai_config import (
     get_client,
     get_embedding_client,
     get_embedding_config,
+    get_mini_model,
     get_model,
+    get_provider_config,
     invalidate_chat_client,
     invalidate_embedding_runtime,
 )
@@ -23,14 +25,18 @@ def _settings(
     embedding_token: str = "embedding-secret",
     api_url: str = "https://chat.example/v1",
     embedding_api_url: str = "https://embedding.example/v1",
-    chat_model: str = "chat-model",
-    embedding_model: str = "embedding-model",
+    chat_model: str | None = "chat-model",
+    mini_model: str | None = "mini-model",
+    embedding_model: str | None = "embedding-model",
 ) -> AISettings:
     """Создаёт полные настройки без чтения рабочей среды."""
     return AISettings(
+        provider="custom-chat-provider",
         api_url=api_url,
         token=token,
         chat_model=chat_model,
+        mini_model=mini_model,
+        embedding_provider="custom-embedding-provider",
         embedding_api_url=embedding_api_url,
         embedding_token=embedding_token,
         embedding_model=embedding_model,
@@ -47,11 +53,11 @@ def _reset_runtime_cache() -> None:
     guild_ai_config_cache.clear()
 
 
-def test_defaults_are_polza_and_have_separate_urls(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Дефолты содержат Polza и два независимых URL."""
+def test_environment_provider_and_url_are_used_for_missing_embedding_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Embedding provider и URL наследуются от настроенных chat-полей."""
     for name in (
-        "AI_PROVIDER",
-        "AI_API_URL",
         "AI_MODEL",
         "AI_MODEL_MINI",
         "AI_EMBEDDING_PROVIDER",
@@ -61,13 +67,15 @@ def test_defaults_are_polza_and_have_separate_urls(monkeypatch: pytest.MonkeyPat
         "AI_EMBEDDING_TOKEN",
     ):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AI_PROVIDER", "custom-chat-provider")
+    monkeypatch.setenv("AI_API_URL", "https://chat.example/v1")
 
     settings = get_ai_settings()
 
-    assert settings.provider == "polza"
-    assert settings.embedding_provider == "polza"
-    assert settings.api_url == "https://api.polza.ai/api/v1"
-    assert settings.embedding_api_url == "https://api.polza.ai/api/v1"
+    assert settings.provider == "custom-chat-provider"
+    assert settings.embedding_provider == "custom-chat-provider"
+    assert settings.api_url == "https://chat.example/v1"
+    assert settings.embedding_api_url == "https://chat.example/v1"
     assert settings.token is None
     assert settings.embedding_token is None
 
@@ -76,6 +84,8 @@ def test_environment_values_are_separate(monkeypatch: pytest.MonkeyPatch) -> Non
     """Каждый env credential и URL попадает только в своё поле."""
     monkeypatch.setenv("AI_API_URL", "https://chat.example/v2")
     monkeypatch.setenv("AI_EMBEDDING_API_URL", "https://embed.example/v3")
+    monkeypatch.setenv("AI_PROVIDER", "custom-chat-provider")
+    monkeypatch.setenv("AI_EMBEDDING_PROVIDER", "custom-embedding-provider")
     monkeypatch.setenv("AI_TOKEN", "chat-secret")
     monkeypatch.setenv("AI_EMBEDDING_TOKEN", "embedding-secret")
     monkeypatch.setenv("AI_MODEL", "chat-model")
@@ -91,6 +101,25 @@ def test_environment_values_are_separate(monkeypatch: pytest.MonkeyPatch) -> Non
     assert settings.chat_model == "chat-model"
     assert settings.mini_model == "mini-model"
     assert settings.embedding_model == "embed-model"
+
+
+def test_provider_helpers_accept_arbitrary_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Runtime helpers не ограничивают provider names фиксированным списком."""
+    monkeypatch.setenv("AI_PROVIDER", "chat-provider.example")
+    monkeypatch.setenv("AI_API_URL", "https://chat-provider.example/v1")
+    monkeypatch.setenv("AI_TOKEN", "chat-secret")
+
+    chat_config = get_provider_config("another-chat-provider")
+    embedding_config = get_embedding_config(
+        "another-embedding-provider",
+        settings=_settings(),
+    )
+
+    assert chat_config == {
+        "api_key": "chat-secret",
+        "base_url": "https://chat-provider.example/v1",
+    }
+    assert embedding_config["base_url"] == "https://embedding.example/v1"
 
 
 def test_embedding_token_never_falls_back_to_chat_token() -> None:
@@ -143,6 +172,23 @@ def test_model_lookup_requires_loaded_guild_configuration() -> None:
     """Guild runtime не использует env при cache miss."""
     with pytest.raises(GuildAIConfigError, match="не загружена"):
         get_model(999)
+
+
+def test_model_lookup_reports_missing_model() -> None:
+    """Runtime не вызывает API, если модель гильдии не настроена."""
+    guild_ai_config_cache._cache[999] = _settings(chat_model=None)
+
+    with pytest.raises(ValueError, match="chat_model"):
+        get_model(999)
+
+    with pytest.raises(ValueError, match="mini_model"):
+        get_mini_model(999, settings=_settings(chat_model="chat-model", mini_model=None))
+
+
+def test_embedding_config_reports_missing_embedding_model() -> None:
+    """Embedding runtime не получает None в поле model."""
+    with pytest.raises(ValueError, match="embedding_model"):
+        get_embedding_config(settings=_settings(embedding_model=None))
 
 
 def test_embedding_config_keeps_embedding_url_and_secret_internal() -> None:

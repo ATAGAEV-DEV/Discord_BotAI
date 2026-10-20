@@ -7,6 +7,7 @@ import pytz
 from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
 
 from app.core.ai_config import get_client, get_mini_model
+from app.core.config import AIConfigurationError
 from app.data.request import delete_channel_messages, get_channel_messages, save_channel_message
 from app.tools.prompt import UPDATED_REPORT_PROMPT
 
@@ -140,13 +141,17 @@ class ReportGenerator:
 
             try:
                 guild_id = channel.guild.id if getattr(channel, "guild", None) else None
+                model = get_mini_model(guild_id)
                 response = await get_client(guild_id).chat.completions.create(
-                    model=get_mini_model(guild_id),
+                    model=model,
                     messages=message_payload,
                     temperature=0.0,
                     top_p=0.01,
                 )
                 report = response.choices[0].message.content or "Пустой ответ от AI"
+            except AIConfigurationError as exc:
+                print(f"Ошибка конфигурации AI: {exc}")
+                return
             except Exception as exc:
                 print(f"Ошибка генерации отчета: {type(exc).__name__}")
                 return

@@ -61,7 +61,7 @@ class Base(AsyncAttrs, DeclarativeBase):
 
 
 class GuildAIConfig(Base):
-    """Полная Polza-конфигурация AI для одной Discord-гильдии."""
+    """Полная provider-agnostic конфигурация AI для одной Discord-гильдии."""
 
     __tablename__ = "guild_ai_configs"
 

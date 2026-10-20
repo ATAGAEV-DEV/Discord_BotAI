@@ -150,8 +150,9 @@ async def ai_generate(
                 )
 
         # --- 6. Вызов API ---
+        model = get_model(server_id)
         completion = await get_client(server_id).chat.completions.create(
-            model=get_model(server_id),
+            model=model,
             messages=openai_messages,
             temperature=0.8,
             top_p=0.8,

@@ -21,17 +21,9 @@ REPORT_TIME_LIMIT: int = 60  # Время ожидания в минутах д�
 RAG_MIN_RELEVANCE_SCORE: float = 0.20  # Минимальный score для включения фрагмента в контекст
 CONVERSATION_MAX_PAIRS: int = 20  # Максимальное число пар (user, assistant) в памяти канала
 
-POLZA_PROVIDER = "polza"
-POLZA_API_URL = "https://api.polza.ai/api/v1"
 
-# Оставляем имя константы для внутренних импортов старого кода, но registry
-# намеренно содержит только один разрешённый runtime-провайдер.
-PROVIDERS: dict[str, dict[str, str]] = {
-    POLZA_PROVIDER: {
-        "token_env": "AI_TOKEN",
-        "base_url": POLZA_API_URL,
-    }
-}
+class AIConfigurationError(ValueError):
+    """Ошибка неполной или некорректной AI-конфигурации."""
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -46,24 +38,24 @@ class AISettings:
     provider: str
     api_url: str
     token: str | None = field(default=None, repr=False)
-    chat_model: str
-    mini_model: str = "openai/gpt-6-luna"
-    embedding_provider: str = POLZA_PROVIDER
-    embedding_api_url: str = POLZA_API_URL
+    chat_model: str | None
+    mini_model: str | None = None
+    embedding_provider: str
+    embedding_api_url: str
     embedding_token: str | None = field(default=None, repr=False)
-    embedding_model: str = "text-embedding-3-large"
+    embedding_model: str | None = None
 
     def __init__(
         self,
-        provider: str = POLZA_PROVIDER,
-        api_url: str = POLZA_API_URL,
+        provider: str = "",
+        api_url: str = "",
         token: str | None = None,
-        chat_model: str = "openai/gpt-6-luna",
-        mini_model: str = "openai/gpt-6-luna",
-        embedding_provider: str = POLZA_PROVIDER,
-        embedding_api_url: str = POLZA_API_URL,
+        chat_model: str | None = None,
+        mini_model: str | None = None,
+        embedding_provider: str | None = None,
+        embedding_api_url: str | None = None,
         embedding_token: str | None = None,
-        embedding_model: str = "text-embedding-3-large",
+        embedding_model: str | None = None,
         *,
         model: str | None = None,
     ) -> None:
@@ -77,13 +69,21 @@ class AISettings:
         object.__setattr__(self, "token", token)
         object.__setattr__(self, "chat_model", model if model is not None else chat_model)
         object.__setattr__(self, "mini_model", mini_model)
-        object.__setattr__(self, "embedding_provider", embedding_provider)
-        object.__setattr__(self, "embedding_api_url", embedding_api_url)
+        object.__setattr__(
+            self,
+            "embedding_provider",
+            embedding_provider if embedding_provider else provider,
+        )
+        object.__setattr__(
+            self,
+            "embedding_api_url",
+            embedding_api_url if embedding_api_url else api_url,
+        )
         object.__setattr__(self, "embedding_token", embedding_token)
         object.__setattr__(self, "embedding_model", embedding_model)
 
     @property
-    def model(self) -> str:
+    def model(self) -> str | None:
         """Legacy alias для chat-модели."""
         return self.chat_model
 
@@ -107,20 +107,22 @@ class AISettings:
 
     @classmethod
     def from_env(cls) -> "AISettings":
-        """Переопределяет значения по умолчанию переменными окружения."""
+        """Читает настройки из окружения без дефолтов конкретных моделей."""
         defaults = cls()
+        provider = os.getenv("AI_PROVIDER") or defaults.provider
+        api_url = os.getenv("AI_API_URL") or defaults.api_url
         settings = cls(
-            provider=os.getenv("AI_PROVIDER") or defaults.provider,
-            api_url=os.getenv("AI_API_URL") or defaults.api_url,
+            provider=provider,
+            api_url=api_url,
             token=os.getenv("AI_TOKEN") or None,
-            chat_model=os.getenv("AI_MODEL") or defaults.chat_model,
-            mini_model=os.getenv("AI_MODEL_MINI") or defaults.mini_model,
-            embedding_provider=(os.getenv("AI_EMBEDDING_PROVIDER") or defaults.embedding_provider),
-            embedding_api_url=(os.getenv("AI_EMBEDDING_API_URL") or defaults.embedding_api_url),
+            chat_model=os.getenv("AI_MODEL") or None,
+            mini_model=os.getenv("AI_MODEL_MINI") or None,
+            embedding_provider=os.getenv("AI_EMBEDDING_PROVIDER") or provider,
+            embedding_api_url=os.getenv("AI_EMBEDDING_API_URL") or api_url,
             embedding_token=os.getenv("AI_EMBEDDING_TOKEN") or None,
-            embedding_model=os.getenv("AI_EMBEDDING_MODEL") or defaults.embedding_model,
+            embedding_model=os.getenv("AI_EMBEDDING_MODEL") or None,
         )
-        return validate_ai_settings(settings, require_tokens=False)
+        return validate_ai_settings(settings, require_tokens=False, require_models=False)
 
 
 def get_ai_settings() -> AISettings:
@@ -128,8 +130,20 @@ def get_ai_settings() -> AISettings:
     return AISettings.from_env()
 
 
-def validate_ai_settings(settings: AISettings, *, require_tokens: bool = True) -> AISettings:
+def validate_ai_settings(
+    settings: AISettings,
+    *,
+    require_tokens: bool = True,
+    require_models: bool = True,
+) -> AISettings:
     """Проверяет корректность AI-конфигурации без вывода секретов."""
+    for field_name, value in (
+        ("provider", settings.provider),
+        ("embedding_provider", settings.embedding_provider),
+    ):
+        if not isinstance(value, str) or not value.strip():
+            raise AIConfigurationError(f"Некорректное поле {field_name}")
+
     for field_name, value in (
         ("api_url", settings.api_url),
         ("embedding_api_url", settings.embedding_api_url),
@@ -138,21 +152,27 @@ def validate_ai_settings(settings: AISettings, *, require_tokens: bool = True) -
             raise TypeError(f"Некорректный {field_name}")
         parsed = urlparse(value)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise ValueError(f"Некорректный {field_name}")
+            raise AIConfigurationError(f"Некорректный {field_name}")
 
     for field_name, value in (
         ("chat_model", settings.chat_model),
         ("mini_model", settings.mini_model),
         ("embedding_model", settings.embedding_model),
     ):
-        if not isinstance(value, str) or not value.strip():
-            raise ValueError(f"Некорректное поле {field_name}")
+        if value is None and not require_models:
+            continue
+        if not isinstance(value, str):
+            if value is None:
+                raise AIConfigurationError(f"Модель {field_name} не задана")
+            raise TypeError(f"Некорректное поле {field_name}")
+        if not value.strip():
+            raise AIConfigurationError(f"Модель {field_name} не задана")
 
     if require_tokens:
         if not isinstance(settings.token, str) or not settings.token.strip():
-            raise ValueError("Отсутствует chat token")
+            raise AIConfigurationError("Отсутствует chat token")
         if not isinstance(settings.embedding_token, str) or not settings.embedding_token.strip():
-            raise ValueError("Отсутствует embedding token")
+            raise AIConfigurationError("Отсутствует embedding token")
     return settings
 
 

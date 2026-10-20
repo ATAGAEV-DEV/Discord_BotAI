@@ -2,7 +2,7 @@
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -15,9 +15,11 @@ from app.data.repositories import guild_ai_config
 def _settings(**overrides: object) -> AISettings:
     """Возвращает полную тестовую конфигурацию."""
     values: dict[str, object] = {
+        "provider": "custom-chat-provider",
         "token": "chat-secret",
         "embedding_token": "embedding-secret",
         "api_url": "https://chat.example/v1",
+        "embedding_provider": "custom-embedding-provider",
         "embedding_api_url": "https://embedding.example/v1",
         "chat_model": "chat-model",
         "mini_model": "mini-model",
@@ -31,12 +33,12 @@ def _row(guild_id: int = 1, **overrides: object) -> GuildAIConfig:
     """Создаёт ORM row с обеими credentials."""
     values = {
         "guild_id": guild_id,
-        "provider": "polza",
+        "provider": "custom-chat-provider",
         "api_url": "https://chat.example/v1",
         "token": "stored-chat-secret",
         "chat_model": "stored-chat-model",
         "mini_model": "stored-mini-model",
-        "embedding_provider": "polza",
+        "embedding_provider": "custom-embedding-provider",
         "embedding_api_url": "https://stored-embedding.example/v1",
         "embedding_token": "stored-embedding-secret",
         "embedding_model": "stored-embedding-model",
@@ -116,6 +118,18 @@ async def test_new_row_requires_embedding_token() -> None:
 
     with pytest.raises(guild_ai_config.GuildAIConfigError, match="embedding token"):
         await guild_ai_config.ensure(session, 2, _settings(embedding_token=None))
+
+    assert session.pending is None
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_new_row_requires_all_models() -> None:
+    """Неполная модельная конфигурация не сохраняется в БД."""
+    session = _Session()
+
+    with pytest.raises(guild_ai_config.GuildAIConfigError, match="chat_model"):
+        await guild_ai_config.ensure(session, 6, _settings(chat_model=None))
 
     assert session.pending is None
     session.commit.assert_not_awaited()
