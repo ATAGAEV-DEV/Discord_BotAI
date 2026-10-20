@@ -70,22 +70,15 @@ async def _execute_to_thread(
 def test_manager_initialization_configures_llama_components(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Конструктор не создаёт global AI client до guild-aware вызова."""
-    node_parser = MagicMock()
+    """Конструктор создаёт только db client (без custom_client/node_parser)."""
     database = MagicMock()
-    parser_factory = MagicMock()
-    parser_factory.from_defaults.return_value = node_parser
 
-    monkeypatch.setattr(llama_integration, "SimpleNodeParser", parser_factory)
     monkeypatch.setattr(llama_integration, "chromadb", MagicMock(PersistentClient=MagicMock()))
     llama_integration.chromadb.PersistentClient.return_value = database
 
     manager = LlamaIndexManager()
 
-    assert manager.custom_client is None
-    assert manager.node_parser is node_parser
     assert manager.db is database
-    parser_factory.from_defaults.assert_called_once_with(chunk_size=128, chunk_overlap=16)
     llama_integration.chromadb.PersistentClient.assert_called_once_with(path="./chroma_db")
 
 
@@ -630,7 +623,6 @@ def test_get_embedding_model_returns_none_for_none_server_id(
 ) -> None:
     """_get_embedding_model для server_id=None не проверяет is_loaded и вызывает get_embedding_model."""
     from app.data import guild_ai_config_cache
-    from app.core.config import AIConfigurationError
 
     monkeypatch.setattr(guild_ai_config_cache, "is_loaded", lambda: False)
 

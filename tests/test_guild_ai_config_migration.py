@@ -487,8 +487,8 @@ async def test_migrate_invalidates_changed_guilds(
     invalidated_guilds: list[int] = []
     invalidate_embedding_calls: list[int] = []
 
-    from app.data import guild_ai_config_cache as cache_module
     from app.core import ai_config as ai_config_module
+    from app.data import guild_ai_config_cache as cache_module
 
     monkeypatch.setattr(cache_module, "invalidate", lambda gid: invalidated_guilds.append(gid))
     monkeypatch.setattr(

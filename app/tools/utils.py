@@ -226,35 +226,3 @@ def get_rank_description(message_count: int) -> dict:
         "description": selected["name"],
     }
 
-
-def chunk_message(text: str, limit: int = 1900) -> list[str]:
-    """Разбивает длинное сообщение на части не более limit символов.
-
-    Разделение происходит по строкам, чтобы не разрывать слова.
-    """
-    if len(text) <= limit:
-        return [text]
-
-    chunks: list[str] = []
-    current = ""
-
-    for line in text.split("\n"):
-        # Если одна строка длиннее лимита — разбиваем принудительно
-        while len(line) > limit:
-            if current:
-                chunks.append(current)
-                current = ""
-            chunks.append(line[:limit])
-            line = line[limit:]
-
-        candidate = f"{current}\n{line}" if current else line
-        if len(candidate) > limit:
-            chunks.append(current)
-            current = line
-        else:
-            current = candidate
-
-    if current:
-        chunks.append(current)
-
-    return chunks

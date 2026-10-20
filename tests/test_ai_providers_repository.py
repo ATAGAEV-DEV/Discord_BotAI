@@ -36,8 +36,8 @@ class _Session:
 
     def __init__(self, rows: "list[AIProvider] | None" = None) -> None:
         self._rows: list[AIProvider] = rows or []
-        self._pending: "AIProvider | None" = None
-        self._deleted_name: "str | None" = None
+        self._pending: AIProvider | None = None
+        self._deleted_name: str | None = None
         self.commit = AsyncMock(side_effect=self._do_commit)
         self.rollback = AsyncMock()
 
@@ -96,7 +96,7 @@ async def test_get_all_returns_empty_list_when_no_providers() -> None:
 
 @pytest.mark.asyncio
 async def test_add_rejects_empty_name() -> None:
-    """add возвращает сообщение об ошибке для пустого имени."""
+    """Add возвращает сообщение об ошибке для пустого имени."""
     session = _Session()
     result = await ai_providers.add(session, "  ", "https://p.example/v1", "tok")
     assert "пустым" in result
@@ -105,7 +105,7 @@ async def test_add_rejects_empty_name() -> None:
 
 @pytest.mark.asyncio
 async def test_add_rejects_empty_api_url() -> None:
-    """add возвращает сообщение об ошибке для пустого URL."""
+    """Add возвращает сообщение об ошибке для пустого URL."""
     session = _Session()
     result = await ai_providers.add(session, "my-provider", "  ", "tok")
     assert "пустым" in result
@@ -114,7 +114,7 @@ async def test_add_rejects_empty_api_url() -> None:
 
 @pytest.mark.asyncio
 async def test_add_rejects_empty_token() -> None:
-    """add возвращает сообщение об ошибке для пустого токена."""
+    """Add возвращает сообщение об ошибке для пустого токена."""
     session = _Session()
     result = await ai_providers.add(session, "my-provider", "https://p.example/v1", "  ")
     assert "пустым" in result
@@ -123,7 +123,7 @@ async def test_add_rejects_empty_token() -> None:
 
 @pytest.mark.asyncio
 async def test_add_inserts_new_provider() -> None:
-    """add сохраняет провайдера и возвращает сообщение об успехе."""
+    """Add сохраняет провайдера и возвращает сообщение об успехе."""
     session = _Session()
 
     result = await ai_providers.add(session, "my-provider", "https://p.example/v1", "secret")
@@ -137,7 +137,7 @@ async def test_add_inserts_new_provider() -> None:
 
 @pytest.mark.asyncio
 async def test_add_strips_whitespace() -> None:
-    """add обрезает пробелы вокруг полей перед сохранением."""
+    """Add обрезает пробелы вокруг полей перед сохранением."""
     session = _Session()
 
     await ai_providers.add(session, "  trimmed  ", "  https://p.example/v1  ", "  tok  ")
@@ -148,7 +148,7 @@ async def test_add_strips_whitespace() -> None:
 
 @pytest.mark.asyncio
 async def test_add_returns_warning_on_integrity_error() -> None:
-    """add возвращает предупреждение и делает rollback при IntegrityError."""
+    """Add возвращает предупреждение и делает rollback при IntegrityError."""
     session = _Session()
     session.commit = AsyncMock(side_effect=IntegrityError(None, None, Exception()))
 
@@ -161,7 +161,7 @@ async def test_add_returns_warning_on_integrity_error() -> None:
 
 @pytest.mark.asyncio
 async def test_add_reraises_unexpected_exception() -> None:
-    """add делает rollback и повторно выбрасывает неожиданное исключение."""
+    """Add делает rollback и повторно выбрасывает неожиданное исключение."""
     session = _Session()
     session.commit = AsyncMock(side_effect=RuntimeError("db crashed"))
 
@@ -177,7 +177,7 @@ async def test_add_reraises_unexpected_exception() -> None:
 
 @pytest.mark.asyncio
 async def test_remove_deletes_existing_provider() -> None:
-    """remove возвращает сообщение об успехе при удалении существующей записи."""
+    """Remove возвращает сообщение об успехе при удалении существующей записи."""
     existing = AIProvider(name="to-remove", api_url="https://r.example/v1", token="t")
     session = _Session([existing])
     session._deleted_name = "to-remove"
@@ -191,7 +191,7 @@ async def test_remove_deletes_existing_provider() -> None:
 
 @pytest.mark.asyncio
 async def test_remove_returns_warning_when_not_found() -> None:
-    """remove возвращает предупреждение если провайдер не найден."""
+    """Remove возвращает предупреждение если провайдер не найден."""
     session = _Session([])
     session._deleted_name = "ghost"
 
@@ -203,7 +203,7 @@ async def test_remove_returns_warning_when_not_found() -> None:
 
 @pytest.mark.asyncio
 async def test_remove_strips_whitespace() -> None:
-    """remove обрезает пробелы перед поиском записи."""
+    """Remove обрезает пробелы перед поиском записи."""
     existing = AIProvider(name="trimmed", api_url="https://t.example/v1", token="t")
     session = _Session([existing])
     session._deleted_name = "trimmed"
@@ -219,7 +219,7 @@ async def test_remove_strips_whitespace() -> None:
 
 @pytest.mark.asyncio
 async def test_get_returns_provider_by_name() -> None:
-    """get возвращает запись провайдера по имени."""
+    """Get возвращает запись провайдера по имени."""
     provider = AIProvider(name="openai", api_url="https://api.openai.com/v1", token="sk-test")
     session = _Session([provider])
 
@@ -230,14 +230,14 @@ async def test_get_returns_provider_by_name() -> None:
 
 @pytest.mark.asyncio
 async def test_get_returns_none_when_not_found() -> None:
-    """get возвращает None если провайдер не найден."""
+    """Get возвращает None если провайдер не найден."""
     result = await ai_providers.get(_Session([]), "unknown")
     assert result is None
 
 
 @pytest.mark.asyncio
 async def test_get_strips_whitespace_from_name() -> None:
-    """get обрезает пробелы вокруг имени перед поиском."""
+    """Get обрезает пробелы вокруг имени перед поиском."""
     provider = AIProvider(name="stripped", api_url="https://s.example/v1", token="tok")
     session = _Session([provider])
 

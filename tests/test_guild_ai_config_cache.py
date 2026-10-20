@@ -96,7 +96,7 @@ def test_clear_removes_entries_and_loaded_state() -> None:
 async def test_ensure_double_check_cache_hit_inside_lock(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """ensure выполняет double-check внутри lock и возвращает уже заполненный cache hit."""
+    """Ensure выполняет double-check внутри lock и возвращает уже заполненный cache hit."""
     import asyncio
 
     db_ensure_calls = 0

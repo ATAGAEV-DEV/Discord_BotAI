@@ -159,7 +159,6 @@ async def test_initialize_guild_ai_configs_calls_load_all_and_ensure(
     from unittest.mock import AsyncMock, MagicMock, patch
 
     from app.core.bot import initialize_guild_ai_configs
-    from app.data import guild_ai_config_cache
 
     # Создаём два fake guild объекта
     guild1 = MagicMock()

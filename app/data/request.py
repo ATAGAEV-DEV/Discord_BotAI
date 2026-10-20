@@ -4,12 +4,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.data.decorators import db_operation
 from app.data.models import (
     ChannelMessage,
-    UserDescription,
     UserMessageStats,
 )
 from app.tools.utils import get_rank_description
-
-__all__ = ["db_operation"]
 
 
 @db_operation("сохранении сообщения канала")
@@ -124,55 +121,3 @@ async def get_user_rank(session: AsyncSession, user_id: int, guild_id: int) -> i
 
     return user_rank if user_rank is not None else 0
 
-
-@db_operation("получении описаний пользователей")
-async def get_user_descriptions(session: AsyncSession, guild_id: int) -> dict[str, str]:
-    """Получает описания пользователей для указанного сервера.
-
-    Возвращает словарь {nick: description}, аналогичный старому USER_DESCRIPTIONS.
-    """
-    query = select(UserDescription).where(UserDescription.guild_id == guild_id)
-    result = await session.execute(query)
-    rows = result.scalars().all()
-    return {row.nick: row.description for row in rows}
-
-
-@db_operation("сохранении описания пользователя")
-async def save_user_description(
-    session: AsyncSession, nick: str, description: str, guild_id: int
-) -> str:
-    """Сохраняет или обновляет описание пользователя для сервера."""
-    query = select(UserDescription).where(
-        UserDescription.nick == nick, UserDescription.guild_id == guild_id
-    )
-    result = await session.execute(query)
-    existing = result.scalar_one_or_none()
-
-    if existing:
-        await session.execute(
-            update(UserDescription)
-            .where(UserDescription.nick == nick, UserDescription.guild_id == guild_id)
-            .values(description=description)
-        )
-        action = "обновлено"
-    else:
-        new_entry = UserDescription(nick=nick, description=description, guild_id=guild_id)
-        session.add(new_entry)
-        action = "добавлено"
-
-    await session.commit()
-    return f"Описание для '{nick}' успешно {action}!"
-
-
-@db_operation("удалении описания пользователя")
-async def delete_user_description(session: AsyncSession, nick: str, guild_id: int) -> str:
-    """Удаляет описание пользователя для указанного сервера."""
-    query = delete(UserDescription).where(
-        UserDescription.nick == nick, UserDescription.guild_id == guild_id
-    )
-    result = await session.execute(query)
-    await session.commit()
-
-    if result.rowcount > 0:
-        return f"Описание для '{nick}' удалено."
-    return f"Описание для '{nick}' не найдено."

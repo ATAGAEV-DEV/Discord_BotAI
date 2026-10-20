@@ -193,7 +193,7 @@ async def test_concurrent_bootstrap_uses_one_guild_lock() -> None:
 
 @pytest.mark.asyncio
 async def test_ensure_with_mapping_environment_settings() -> None:
-    """ensure принимает dict-подобный mapping вместо AISettings."""
+    """Ensure принимает dict-подобный mapping вместо AISettings."""
     env_mapping = {
         "provider": "custom-chat-provider",
         "api_url": "https://chat.example/v1",
@@ -285,9 +285,7 @@ async def test_ensure_raises_when_integrity_error_and_no_winner() -> None:
 async def test_ensure_uses_env_settings_when_none_passed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """ensure вызывает get_ai_settings() когда environment_settings=None."""
-    from app.core.config import AISettings
-
+    """Ensure вызывает get_ai_settings() когда environment_settings=None."""
     fake_env = _settings()
     monkeypatch.setattr(
         "app.data.repositories.guild_ai_config.get_ai_settings",
@@ -387,7 +385,7 @@ def test_row_to_settings_converts_valid_row() -> None:
 
 @pytest.mark.asyncio
 async def test_get_returns_none_for_missing_guild() -> None:
-    """get возвращает None если гильдия не найдена."""
+    """Get возвращает None если гильдия не найдена."""
     session = _Session(None)
     result = await guild_ai_config.get(session, 777)
     assert result is None
@@ -395,7 +393,7 @@ async def test_get_returns_none_for_missing_guild() -> None:
 
 @pytest.mark.asyncio
 async def test_get_returns_settings_for_existing_guild() -> None:
-    """get возвращает AISettings для существующей гильдии."""
+    """Get возвращает AISettings для существующей гильдии."""
     session = _Session(_row(guild_id=10))
     result = await guild_ai_config.get(session, 10)
     assert result is not None

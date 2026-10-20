@@ -2,15 +2,13 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from sqlalchemy import select, update
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 from app.data import decorators, request
-from app.data.models import ChannelMessage, UserDescription, UserMessageStats
+from app.data.models import ChannelMessage, UserMessageStats
 
 
 @pytest.fixture
@@ -34,7 +32,7 @@ def database_session(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     return session
 
 
-def _rows_result(*rows: SimpleNamespace | ChannelMessage) -> MagicMock:
+def _rows_result(*rows: ChannelMessage) -> MagicMock:
     """Создаёт результат SQLAlchemy со списком строк."""
     result = MagicMock()
     result.scalars.return_value.all.return_value = list(rows)
@@ -219,101 +217,6 @@ async def test_get_user_rank_returns_zero_for_missing_user(database_session: Mag
 
     assert result == 0
     database_session.execute.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_get_user_descriptions_returns_nick_description_mapping(
-    database_session: MagicMock,
-) -> None:
-    """Описания преобразуются в словарь с никами в качестве ключей."""
-    database_session.execute.return_value = _rows_result(
-        SimpleNamespace(nick="Alice", description="Первое описание"),
-        SimpleNamespace(nick="Bob", description="Второе описание"),
-    )
-
-    result = await request.get_user_descriptions(100)
-
-    assert result == {
-        "Alice": "Первое описание",
-        "Bob": "Второе описание",
-    }
-    database_session.execute.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_save_user_description_adds_new_entry(database_session: MagicMock) -> None:
-    """Новое описание добавляется в базу данных."""
-    database_session.execute.return_value = _scalar_result(None)
-
-    result = await request.save_user_description("Alice", "Описание", 100)
-
-    assert result == "Описание для 'Alice' успешно добавлено!"
-    database_session.add.assert_called_once()
-    new_description = database_session.add.call_args.args[0]
-    assert isinstance(new_description, UserDescription)
-    assert new_description.nick == "Alice"
-    assert new_description.description == "Описание"
-    assert new_description.guild_id == 100
-    database_session.commit.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_save_user_description_updates_existing_entry(
-    database_session: MagicMock,
-) -> None:
-    """Для существующего ника обновляется текст описания."""
-    existing_description = UserDescription(
-        nick="Alice",
-        description="Старое описание",
-        guild_id=100,
-    )
-    database_session.execute.return_value = _scalar_result(existing_description)
-
-    result = await request.save_user_description("Alice", "Новое описание", 100)
-
-    assert result == "Описание для 'Alice' успешно обновлено!"
-    assert database_session.execute.await_count == 2
-    lookup, write = [call.args[0] for call in database_session.execute.await_args_list]
-    assert lookup.compare(
-        select(UserDescription).where(
-            UserDescription.nick == "Alice", UserDescription.guild_id == 100
-        )
-    )
-    assert write.compare(
-        update(UserDescription)
-        .where(UserDescription.nick == "Alice", UserDescription.guild_id == 100)
-        .values(description="Новое описание")
-    )
-    database_session.add.assert_not_called()
-    database_session.commit.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_delete_user_description_returns_success_when_row_deleted(
-    database_session: MagicMock,
-) -> None:
-    """Удаление существующей записи возвращает сообщение об успехе."""
-    database_session.execute.return_value = MagicMock(rowcount=1)
-
-    result = await request.delete_user_description("Alice", 100)
-
-    assert result == "Описание для 'Alice' удалено."
-    database_session.execute.assert_awaited_once()
-    database_session.commit.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_delete_user_description_returns_not_found_when_row_missing(
-    database_session: MagicMock,
-) -> None:
-    """При отсутствии записи возвращается соответствующее сообщение."""
-    database_session.execute.return_value = MagicMock(rowcount=0)
-
-    result = await request.delete_user_description("Alice", 100)
-
-    assert result == "Описание для 'Alice' не найдено."
-    database_session.execute.assert_awaited_once()
-    database_session.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio

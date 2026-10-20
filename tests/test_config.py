@@ -265,8 +265,7 @@ def test_validate_ai_settings_raises_type_error_for_non_string_model() -> None:
 
 def test_validate_ai_settings_raises_error_for_empty_model_string() -> None:
     """validate_ai_settings выбрасывает AIConfigurationError для пустой строки модели."""
-    from app.core.config import validate_ai_settings
-    from app.core.config import AIConfigurationError
+    from app.core.config import AIConfigurationError, validate_ai_settings
 
     settings = AISettings(
         provider="p",
@@ -282,8 +281,7 @@ def test_validate_ai_settings_raises_error_for_empty_model_string() -> None:
 
 def test_validate_ai_settings_raises_error_for_missing_chat_token() -> None:
     """validate_ai_settings выбрасывает AIConfigurationError при отсутствии chat token."""
-    from app.core.config import validate_ai_settings
-    from app.core.config import AIConfigurationError
+    from app.core.config import AIConfigurationError, validate_ai_settings
 
     settings = AISettings(
         provider="p",
@@ -301,8 +299,7 @@ def test_validate_ai_settings_raises_error_for_missing_chat_token() -> None:
 
 def test_validate_ai_settings_raises_error_for_invalid_embedding_url() -> None:
     """validate_ai_settings выбрасывает AIConfigurationError для невалидного embedding URL."""
-    from app.core.config import validate_ai_settings
-    from app.core.config import AIConfigurationError
+    from app.core.config import AIConfigurationError, validate_ai_settings
 
     settings = AISettings(
         provider="p",

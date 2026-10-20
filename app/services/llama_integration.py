@@ -4,7 +4,6 @@ from typing import Any
 
 import chromadb
 from llama_index.core import Document, StorageContext, VectorStoreIndex
-from llama_index.core.node_parser import SimpleNodeParser
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
@@ -58,8 +57,6 @@ class LlamaIndexManager:
 
     def __init__(self) -> None:
         """Инициализирует менеджер LlamaIndex."""
-        self.custom_client = None
-        self.node_parser = SimpleNodeParser.from_defaults(chunk_size=128, chunk_overlap=16)
         self.db = chromadb.PersistentClient(path="./chroma_db")
         # per-channel краткосрочная память: channel_id → ChannelHistory
         self._channel_histories: dict[int, ChannelHistory] = {}

@@ -14,7 +14,6 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import (
     AsyncAttrs,
     AsyncSession,
@@ -84,18 +83,6 @@ class GuildAIConfig(Base):
     def __repr__(self) -> str:
         """Не включает chat/embedding credentials в диагностику ORM."""
         return f"<GuildAIConfig(guild_id={self.guild_id})>"
-
-
-class User(Base):
-    """Модель пользователя Discord."""
-
-    __tablename__ = "users"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(BigInteger, nullable=False)
-    name = Column(String(50), nullable=False)
-    context = Column(JSONB)
-    datetime_insert = Column(DateTime, default=func.now())
 
 
 class ChannelMessage(Base):

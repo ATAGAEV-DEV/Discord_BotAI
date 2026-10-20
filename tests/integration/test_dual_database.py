@@ -29,19 +29,12 @@ async def test_bigint_jsonb_and_server_defaults_round_trip(databases: Databases)
     snowflake = 9223372036854775000
     context = {"dialog": [{"text": "Привет 👋", "ok": True}], "empty": None}
     async with models.async_session() as session:
-        session.add(models.User(user_id=snowflake, name="Тест", context=context))
         session.add(models.UserMessageStats(user_id=snowflake, guild_id=100, name="Тест"))
         await session.commit()
-    user, = await databases.rows(models.User)
     stats, = await databases.rows(models.UserMessageStats)
-    assert user.user_id == snowflake
-    assert user.context == context
-    assert isinstance(user.datetime_insert, datetime)
+    assert stats.user_id == snowflake
     assert stats.message_count == 0
     assert isinstance(stats.last_updated, datetime)
-    async with databases.session_maker() as session:
-        column_type = await session.scalar(text("SELECT pg_typeof(context)::text FROM users"))
-        assert column_type == "jsonb"
 
 
 async def test_unique_not_null_and_composite_constraints(databases: Databases) -> None:

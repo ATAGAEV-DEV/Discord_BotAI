@@ -583,13 +583,12 @@ async def test_ai_generate_repairs_cached_emoji_before_indexing(marker: str) -> 
 @pytest.mark.asyncio
 async def test_ai_generate_returns_timeout_message_on_timeout() -> None:
     """ai_generate возвращает сообщение о таймауте при asyncio.TimeoutError."""
-    import asyncio
 
     def _wait_for_raising(coro, timeout):
         # Закрываем coroutine явно, чтобы не получить RuntimeWarning
         # "coroutine was never awaited" от GC между тестами.
         coro.close()
-        raise asyncio.TimeoutError()
+        raise TimeoutError()
 
     with (
         patch("app.core.handlers.asyncio.wait_for", side_effect=_wait_for_raising),

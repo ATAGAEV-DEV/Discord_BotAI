@@ -122,7 +122,7 @@ async def test_remove_not_found() -> None:
 
 @pytest.mark.asyncio
 async def test_add_reraises_unexpected_exception_with_rollback() -> None:
-    """add делает rollback и повторно выбрасывает неожиданное исключение."""
+    """Add делает rollback и повторно выбрасывает неожиданное исключение."""
     session = _make_session()
     session.commit = AsyncMock(side_effect=RuntimeError("unexpected db error"))
 

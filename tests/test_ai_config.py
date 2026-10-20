@@ -230,7 +230,7 @@ def test_get_provider_config_raises_without_token() -> None:
 
 
 def test_get_provider_config_ignores_name_parameter() -> None:
-    """legacy параметр name игнорируется — используются текущие настройки."""
+    """Legacy параметр name игнорируется — используются текущие настройки."""
     settings = _settings()
     guild_ai_config_cache._cache[12] = settings
 
