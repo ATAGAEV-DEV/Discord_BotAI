@@ -226,4 +226,5 @@ async def update_model(
     await session.commit()
     from app.data import guild_ai_config_cache
     guild_ai_config_cache.invalidate(guild_id)
+    await guild_ai_config_cache.ensure(session, guild_id)
 
