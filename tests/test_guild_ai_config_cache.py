@@ -90,3 +90,36 @@ def test_clear_removes_entries_and_loaded_state() -> None:
 
     assert guild_ai_config_cache.get_all() == {}
     assert not guild_ai_config_cache.is_loaded()
+
+
+@pytest.mark.asyncio
+async def test_ensure_double_check_cache_hit_inside_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ensure выполняет double-check внутри lock и возвращает уже заполненный cache hit."""
+    import asyncio
+
+    db_ensure_calls = 0
+    original_settings = _settings(42)
+
+    async def _slow_ensure(session: object, guild_id: int, env: object = None) -> AISettings:
+        nonlocal db_ensure_calls
+        db_ensure_calls += 1
+        await asyncio.sleep(0)  # уступаем управление
+        guild_ai_config_cache._cache[guild_id] = original_settings
+        return original_settings
+
+    monkeypatch.setattr(guild_ai_config, "ensure", _slow_ensure)
+
+    # Первый вызов заходит в lock и запускает _slow_ensure.
+    # Пока он ждёт, второй вызов тоже проходит первый cache miss,
+    # занимает очередь на lock и при входе уже видит заполненный cache.
+    results = await asyncio.gather(
+        guild_ai_config_cache.ensure(object(), 42),
+        guild_ai_config_cache.ensure(object(), 42),
+    )
+
+    # DB должна быть вызвана ровно один раз — второй вызов поймал double-check
+    assert db_ensure_calls == 1
+    assert results[0] is original_settings
+    assert results[1] is original_settings

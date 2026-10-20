@@ -196,3 +196,119 @@ def test_empty_command_prefix_is_rejected(monkeypatch: pytest.MonkeyPatch, prefi
 
     with pytest.raises(ValueError, match="COMMAND_PREFIX"):
         get_command_prefix()
+
+
+def test_ai_settings_model_property_is_alias_for_chat_model() -> None:
+    """AISettings.model — legacy alias для chat_model."""
+    settings = AISettings(
+        provider="p",
+        api_url="https://p.example/v1",
+        chat_model="gpt-4",
+    )
+    assert settings.model == "gpt-4"
+
+    settings_no_model = AISettings(
+        provider="p",
+        api_url="https://p.example/v1",
+        chat_model=None,
+    )
+    assert settings_no_model.model is None
+
+
+def test_validate_ai_settings_raises_type_error_for_non_string_url() -> None:
+    """validate_ai_settings выбрасывает TypeError для не-строкового api_url."""
+    from app.core.config import validate_ai_settings
+
+    settings = AISettings(
+        provider="p",
+        api_url="https://p.example/v1",
+    )
+    # Патчим api_url объектом, не строкой
+    object.__setattr__(settings, "api_url", 12345)
+
+    with pytest.raises(TypeError, match="api_url"):
+        validate_ai_settings(settings, require_tokens=False, require_models=False)
+
+
+def test_validate_ai_settings_raises_type_error_for_non_string_embedding_url() -> None:
+    """validate_ai_settings выбрасывает TypeError для не-строкового embedding_api_url."""
+    from app.core.config import validate_ai_settings
+
+    settings = AISettings(
+        provider="p",
+        api_url="https://p.example/v1",
+        embedding_api_url="https://p.example/v1",
+    )
+    object.__setattr__(settings, "embedding_api_url", None)
+
+    with pytest.raises(TypeError, match="embedding_api_url"):
+        validate_ai_settings(settings, require_tokens=False, require_models=False)
+
+
+def test_validate_ai_settings_raises_type_error_for_non_string_model() -> None:
+    """validate_ai_settings выбрасывает TypeError для не-строкового значения модели."""
+    from app.core.config import validate_ai_settings
+
+    settings = AISettings(
+        provider="p",
+        api_url="https://p.example/v1",
+        chat_model="gpt-4",
+        mini_model="gpt-4-mini",
+        embedding_model="embed-v1",
+    )
+    # Помещаем не-строку, не None — должен сработать ветка TypeError
+    object.__setattr__(settings, "chat_model", 999)
+
+    with pytest.raises(TypeError, match="chat_model"):
+        validate_ai_settings(settings, require_tokens=False)
+
+
+def test_validate_ai_settings_raises_error_for_empty_model_string() -> None:
+    """validate_ai_settings выбрасывает AIConfigurationError для пустой строки модели."""
+    from app.core.config import validate_ai_settings
+    from app.core.config import AIConfigurationError
+
+    settings = AISettings(
+        provider="p",
+        api_url="https://p.example/v1",
+        chat_model="   ",
+        mini_model="gpt-4-mini",
+        embedding_model="embed-v1",
+    )
+
+    with pytest.raises(AIConfigurationError, match="chat_model"):
+        validate_ai_settings(settings, require_tokens=False)
+
+
+def test_validate_ai_settings_raises_error_for_missing_chat_token() -> None:
+    """validate_ai_settings выбрасывает AIConfigurationError при отсутствии chat token."""
+    from app.core.config import validate_ai_settings
+    from app.core.config import AIConfigurationError
+
+    settings = AISettings(
+        provider="p",
+        api_url="https://p.example/v1",
+        chat_model="gpt-4",
+        mini_model="gpt-4-mini",
+        embedding_model="embed-v1",
+        token=None,
+        embedding_token="emb-secret",
+    )
+
+    with pytest.raises(AIConfigurationError, match="chat token"):
+        validate_ai_settings(settings)
+
+
+def test_validate_ai_settings_raises_error_for_invalid_embedding_url() -> None:
+    """validate_ai_settings выбрасывает AIConfigurationError для невалидного embedding URL."""
+    from app.core.config import validate_ai_settings
+    from app.core.config import AIConfigurationError
+
+    settings = AISettings(
+        provider="p",
+        api_url="https://p.example/v1",
+        embedding_api_url="not-a-valid-url",
+    )
+
+    with pytest.raises(AIConfigurationError, match="embedding_api_url"):
+        validate_ai_settings(settings, require_tokens=False, require_models=False)

@@ -144,3 +144,26 @@ async def test_init_models_creates_tables(
     connection.run_sync.assert_awaited_once_with(models.Base.metadata.create_all)
     mock_engine.begin.assert_called_once_with()
 
+
+def test_guild_ai_config_repr_contains_guild_id() -> None:
+    """GuildAIConfig.__repr__ содержит guild_id и не раскрывает credentials."""
+    cfg = models.GuildAIConfig(
+        guild_id=12345,
+        provider="openai",
+        api_url="https://api.openai.com/v1",
+        token="secret-token",
+        chat_model="gpt-4",
+        mini_model="gpt-4-mini",
+        embedding_provider="openai",
+        embedding_api_url="https://api.openai.com/v1",
+        embedding_token="emb-secret",
+        embedding_model="text-embedding-3-small",
+    )
+
+    result = repr(cfg)
+
+    assert "12345" in result
+    assert "GuildAIConfig" in result
+    assert "secret-token" not in result
+    assert "emb-secret" not in result
+

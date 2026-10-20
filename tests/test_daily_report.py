@@ -582,3 +582,47 @@ class TestReportGeneratorGenerateAndSendReport:
 
         channel.send.assert_awaited_once_with("Сводка")
         assert rg.channels == {}
+
+
+# ---------------------------------------------------------------------------
+# generate_and_send_report — AIConfigurationError (строки 152-154)
+# ---------------------------------------------------------------------------
+
+class TestGenerateAndSendReportAIConfigError:
+    """Тесты ветки AIConfigurationError внутри generate_and_send_report."""
+
+    @pytest.mark.asyncio
+    async def test_ai_configuration_error_is_caught_and_logged(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """AIConfigurationError перехватывается и выводится в stdout."""
+        from app.core.config import AIConfigurationError
+
+        bot = MagicMock()
+        bot.report_msg_limit = 1
+        channel = MagicMock()
+        channel.guild = MagicMock()
+        channel.guild.id = 42
+        bot.get_channel.return_value = channel
+
+        rg = ReportGenerator(bot=bot)
+
+        client = MagicMock()
+        client.chat.completions.create = AsyncMock(
+            side_effect=AIConfigurationError("модель не настроена")
+        )
+
+        monkeypatch.setattr(
+            daily_report,
+            "get_channel_messages",
+            AsyncMock(return_value=[_message(1)]),
+        )
+        monkeypatch.setattr(daily_report, "get_client", MagicMock(return_value=client))
+        monkeypatch.setattr(daily_report, "get_mini_model", MagicMock(return_value="mini"))
+
+        await rg.generate_and_send_report(100)
+
+        channel.send.assert_not_called()
+        output = capsys.readouterr().out
+        assert "конфигурации AI" in output or "AIConfiguration" in output or "модель" in output
+

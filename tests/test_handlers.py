@@ -574,3 +574,110 @@ async def test_ai_generate_repairs_cached_emoji_before_indexing(marker: str) -> 
         ],
     )
     mock_create_task.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# ai_generate — asyncio.TimeoutError (строки 191-193)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_ai_generate_returns_timeout_message_on_timeout() -> None:
+    """ai_generate возвращает сообщение о таймауте при asyncio.TimeoutError."""
+    import asyncio
+
+    with (
+        patch("app.core.handlers.asyncio.wait_for", side_effect=asyncio.TimeoutError()),
+        patch("app.core.handlers.llama_manager"),
+        patch("app.core.handlers.user_prompt", return_value="sys"),
+        patch("app.core.handlers.user_descriptions_cache.get", return_value={}),
+        patch("app.core.handlers.get_client"),
+        patch("app.core.handlers.get_model", return_value="m"),
+    ):
+        result = await ai_generate("вопрос", 123, "Bob")
+
+    assert "⏳" in result or "Запрос не обработан" in result or str(AI_GENERATE_TIMEOUT) in result
+
+
+# ---------------------------------------------------------------------------
+# ai_generate — assistant role в messages (строки 150-153)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_ai_generate_converts_assistant_history_message() -> None:
+    """Сообщение с role=assistant корректно конвертируется в OpenAI-тип."""
+    from app.services.llama_integration import ChannelHistory
+
+    history = ChannelHistory(max_pairs=5)
+    history.add_pair(
+        {"role": "user", "content": "Привет"},
+        {"role": "assistant", "content": "Здравствуй"},
+    )
+
+    completion = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="Ответ"))]
+    )
+
+    with (
+        patch("app.core.handlers.llama_manager") as mock_llama,
+        patch("app.core.handlers.user_prompt", return_value="sys"),
+        patch("app.core.handlers.user_descriptions_cache.get", return_value={}),
+        patch("app.core.handlers.get_client") as mock_get_client,
+        patch("app.core.handlers.get_model", return_value="m"),
+        patch("app.core.handlers.count_tokens", return_value=5),
+        patch("app.core.handlers.asyncio.create_task") as mock_create_task,
+    ):
+        mock_llama.get_channel_history.return_value = history
+        mock_llama.query_relevant_context = AsyncMock(return_value=[])
+        mock_llama.index_messages = AsyncMock()
+        mock_create_task.side_effect = lambda coroutine: coroutine.close()
+        mock_create = AsyncMock(return_value=completion)
+        mock_get_client.return_value.chat.completions.create = mock_create
+
+        result = await ai_generate("новый вопрос", 123, "Alice", channel_id=10)
+
+    assert result == "Ответ"
+    call_args = mock_create.call_args
+    sent_messages = call_args[1]["messages"]
+    roles = [
+        m.get("role") if isinstance(m, dict) else getattr(m, "role", None)
+        for m in sent_messages
+    ]
+    assert "assistant" in roles
+
+
+# ---------------------------------------------------------------------------
+# ai_generate — history.add_pair (строка 179)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_ai_generate_saves_pair_in_channel_history() -> None:
+    """ai_generate добавляет пару (user, assistant) в краткосрочную историю канала."""
+    from app.services.llama_integration import ChannelHistory
+
+    completion = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="Ответ от AI"))]
+    )
+
+    with (
+        patch("app.core.handlers.llama_manager") as mock_llama,
+        patch("app.core.handlers.user_prompt", return_value="sys"),
+        patch("app.core.handlers.user_descriptions_cache.get", return_value={}),
+        patch("app.core.handlers.get_client") as mock_get_client,
+        patch("app.core.handlers.get_model", return_value="m"),
+        patch("app.core.handlers.count_tokens", return_value=5),
+        patch("app.core.handlers.asyncio.create_task") as mock_create_task,
+    ):
+        history = ChannelHistory(max_pairs=5)
+        mock_llama.get_channel_history.return_value = history
+        mock_llama.query_relevant_context = AsyncMock(return_value=[])
+        mock_llama.index_messages = AsyncMock()
+        mock_create_task.side_effect = lambda coroutine: coroutine.close()
+        mock_get_client.return_value.chat.completions.create = AsyncMock(return_value=completion)
+
+        await ai_generate("вопрос", 456, "Charlie", channel_id=99)
+
+    msgs = history.get_messages()
+    assert len(msgs) == 2
+    assert msgs[0]["role"] == "user"
+    assert msgs[1]["role"] == "assistant"
+

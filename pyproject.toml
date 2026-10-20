@@ -57,3 +57,6 @@ asyncio_mode = "auto"
 pythonpath = ["."]
 testpaths = ["tests"]
 markers = ["integration: последовательные проверки двух реальных PostgreSQL БД"]
+filterwarnings = [
+    "ignore::DeprecationWarning:discord",
+]

@@ -530,3 +530,46 @@ async def test_unhandled_error_sends_generic_response_and_prints_outer_error(
         "❌ Произошла ошибка при выполнении команды.",
     )
     assert capsys.readouterr().out == f"Command error: {error}\n"
+
+
+@pytest.mark.asyncio
+async def test_command_not_found_ai_config_error_sends_config_message(
+    error_cog: error_handler.ErrorHandler,
+    mock_ctx: MagicMock,
+    ai_generate: AsyncMock,
+    monotonic: MagicMock,
+) -> None:
+    """AIConfigurationError внутри CommandNotFound отправляет конфигурационное сообщение."""
+    from app.core.config import AIConfigurationError
+
+    ai_generate.side_effect = AIConfigurationError("модель не задана")
+    monotonic.return_value = 200.0
+
+    await error_cog.on_command_error(mock_ctx, commands.CommandNotFound("foo"))
+
+    mock_ctx.send.assert_awaited_once()
+    sent_text = mock_ctx.send.call_args[0][0]
+    assert "AI-конфигурация не настроена" in sent_text
+    assert "модель не задана" in sent_text
+
+
+@pytest.mark.asyncio
+async def test_command_invoke_error_with_ai_config_original_sends_config_message(
+    non_ai_cog: error_handler.ErrorHandler,
+    mock_ctx: MagicMock,
+    ai_generate: AsyncMock,
+    monotonic: MagicMock,
+) -> None:
+    """AIConfigurationError как original_error CommandInvokeError покрывает строку 74."""
+    from app.core.config import AIConfigurationError
+
+    original = AIConfigurationError("токен не настроен")
+    error = commands.CommandInvokeError(original)
+
+    await non_ai_cog.on_command_error(mock_ctx, error)
+
+    mock_ctx.send.assert_awaited_once()
+    sent_text = mock_ctx.send.call_args[0][0]
+    assert "AI-конфигурация не настроена" in sent_text
+    assert "токен не настроен" in sent_text
+    ai_generate.assert_not_called()

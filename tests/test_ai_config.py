@@ -14,7 +14,7 @@ from app.core.ai_config import (
     invalidate_chat_client,
     invalidate_embedding_runtime,
 )
-from app.core.config import AISettings, get_ai_settings
+from app.core.config import AIConfigurationError, AISettings, get_ai_settings
 from app.data import guild_ai_config_cache
 from app.data.repositories.guild_ai_config import GuildAIConfigError
 
@@ -201,3 +201,349 @@ def test_embedding_config_keeps_embedding_url_and_secret_internal() -> None:
     assert settings.token not in repr(settings)
     assert settings.embedding_token not in repr(settings)
     assert "token" not in settings.public_dict()
+
+
+# ---------------------------------------------------------------------------
+# get_provider_config (строки 58-63)
+# ---------------------------------------------------------------------------
+
+def test_get_provider_config_returns_chat_credentials() -> None:
+    """get_provider_config возвращает chat api_key и base_url."""
+    settings = _settings()
+    guild_ai_config_cache._cache[10] = settings
+
+    config = get_provider_config(guild_id=10)
+
+    assert config["api_key"] == settings.token
+    assert config["base_url"] == settings.api_url
+
+
+def test_get_provider_config_raises_without_token() -> None:
+    """get_provider_config выбрасывает AIConfigurationError если chat token отсутствует."""
+    from app.core.config import AIConfigurationError
+
+    settings = _settings(token=None)
+    guild_ai_config_cache._cache[11] = settings
+
+    with pytest.raises(AIConfigurationError, match="chat token"):
+        get_provider_config(guild_id=11)
+
+
+def test_get_provider_config_ignores_name_parameter() -> None:
+    """legacy параметр name игнорируется — используются текущие настройки."""
+    settings = _settings()
+    guild_ai_config_cache._cache[12] = settings
+
+    config = get_provider_config(name="ignored-name", guild_id=12)
+
+    assert config["base_url"] == settings.api_url
+
+
+# ---------------------------------------------------------------------------
+# get_embedding_config — missing token (строка 76)
+# ---------------------------------------------------------------------------
+
+def test_get_embedding_config_raises_without_embedding_token() -> None:
+    """get_embedding_config выбрасывает AIConfigurationError если embedding token отсутствует."""
+    from app.core.config import AIConfigurationError
+
+    with pytest.raises(AIConfigurationError, match="embedding token"):
+        get_embedding_config(settings=_settings(embedding_token=None))
+
+
+# ---------------------------------------------------------------------------
+# get_client — строки 93, 96
+# ---------------------------------------------------------------------------
+
+def test_get_client_raises_type_error_for_string_guild_id() -> None:
+    """get_client выбрасывает TypeError если guild_id — строка."""
+    with pytest.raises(TypeError, match="guild_id"):
+        get_client("not-an-int")  # type: ignore[arg-type]
+
+
+def test_get_client_raises_for_missing_token() -> None:
+    """get_client выбрасывает AIConfigurationError если chat token отсутствует."""
+    from app.core.config import AIConfigurationError
+
+    with pytest.raises(AIConfigurationError, match="chat token"):
+        get_client(settings=_settings(token=None))
+
+
+# ---------------------------------------------------------------------------
+# Legacy API: get_chat_client, clear_chat_client_cache,
+#             clear_embedding_client_cache (строки 198, 203, 208-209)
+# ---------------------------------------------------------------------------
+
+def test_get_chat_client_delegates_to_get_client() -> None:
+    """get_chat_client возвращает тот же объект, что и get_client."""
+    from app.core.ai_config import get_chat_client
+
+    settings = _settings()
+    client_via_get = get_client(settings=settings)
+    client_via_chat = get_chat_client(settings=settings)
+
+    assert client_via_get is client_via_chat
+
+
+def test_clear_chat_client_cache_clears_only_chat() -> None:
+    """clear_chat_client_cache очищает только chat namespace."""
+    from app.core import ai_config as ai_config_module
+    from app.core.ai_config import clear_chat_client_cache
+
+    settings = _settings()
+    get_client(settings=settings)
+    get_embedding_client(settings=settings)
+
+    clear_chat_client_cache()
+
+    assert len(ai_config_module._chat_clients) == 0
+    assert len(ai_config_module._embedding_clients) == 1
+
+
+def test_clear_embedding_client_cache_clears_only_embedding() -> None:
+    """clear_embedding_client_cache очищает только embedding namespace."""
+    from app.core import ai_config as ai_config_module
+    from app.core.ai_config import clear_embedding_client_cache
+
+    settings = _settings()
+    get_client(settings=settings)
+    get_embedding_client(settings=settings)
+    # Вставляем fake объект напрямую в _embedding_models, минуя OpenAIEmbedding
+    fake_key = (None, settings.embedding_api_url, settings.embedding_token or "", settings.embedding_model or "")
+    ai_config_module._embedding_models[fake_key] = object()  # type: ignore[assignment]
+
+    clear_embedding_client_cache()
+
+    assert len(ai_config_module._chat_clients) == 1
+    assert len(ai_config_module._embedding_clients) == 0
+    assert len(ai_config_module._embedding_models) == 0
+
+
+# ---------------------------------------------------------------------------
+# get_active_provider, get_available_providers, next_provider,
+# set_active_provider (строки 214, 223-230, 235)
+# ---------------------------------------------------------------------------
+
+def test_get_active_provider_returns_provider_from_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """get_active_provider возвращает provider из текущих настроек окружения."""
+    from app.core.ai_config import get_active_provider
+
+    monkeypatch.setenv("AI_PROVIDER", "test-provider")
+    monkeypatch.setenv("AI_API_URL", "https://test.example/v1")
+
+    assert get_active_provider() == "test-provider"
+
+
+def test_get_available_providers_returns_list_with_active_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """get_available_providers возвращает список с одним текущим провайдером."""
+    from app.core.ai_config import get_available_providers
+
+    monkeypatch.setenv("AI_PROVIDER", "my-provider")
+    monkeypatch.setenv("AI_API_URL", "https://my.example/v1")
+
+    assert get_available_providers() == ["my-provider"]
+
+
+def test_next_provider_returns_active_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """next_provider возвращает текущий active provider."""
+    from app.core.ai_config import next_provider
+
+    monkeypatch.setenv("AI_PROVIDER", "next-provider")
+    monkeypatch.setenv("AI_API_URL", "https://next.example/v1")
+
+    assert next_provider() == "next-provider"
+
+
+def test_set_active_provider_accepts_valid_name() -> None:
+    """set_active_provider принимает непустую строку без исключений."""
+    from app.core.ai_config import set_active_provider
+
+    set_active_provider("openai")  # не должно бросать
+
+
+def test_set_active_provider_rejects_empty_name() -> None:
+    """set_active_provider выбрасывает ValueError для пустой строки."""
+    from app.core.ai_config import set_active_provider
+
+    with pytest.raises(ValueError, match="Provider"):
+        set_active_provider("   ")
+
+
+def test_set_active_provider_rejects_non_string() -> None:
+    """set_active_provider выбрасывает ValueError для не-строки."""
+    from app.core.ai_config import set_active_provider
+
+    with pytest.raises(ValueError, match="Provider"):
+        set_active_provider(None)  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# set_model (строки 256-259)
+# ---------------------------------------------------------------------------
+
+def test_set_model_accepts_valid_model_without_guild() -> None:
+    """set_model принимает строку без guild_id без исключений."""
+    from app.core.ai_config import set_model
+
+    set_model("gpt-4")  # не должно бросать
+
+
+def test_set_model_rejects_empty_string() -> None:
+    """set_model выбрасывает ValueError для пустой строки."""
+    from app.core.ai_config import set_model
+
+    with pytest.raises(ValueError, match="Chat model"):
+        set_model("  ")
+
+
+def test_set_model_rejects_guild_id() -> None:
+    """set_model выбрасывает ValueError если передан guild_id."""
+    from app.core.ai_config import set_model
+
+    with pytest.raises(ValueError, match="repository"):
+        set_model("gpt-4", guild_id=42)
+
+
+
+# ---------------------------------------------------------------------------
+# get_model — happy path (строка 243)
+# ---------------------------------------------------------------------------
+
+def test_get_model_returns_chat_model_from_cache() -> None:
+    """get_model возвращает chat_model из кэша гильдии."""
+    guild_ai_config_cache._cache[555] = _settings(chat_model="gpt-4-turbo")
+
+    result = get_model(555)
+
+    assert result == "gpt-4-turbo"
+
+
+# ---------------------------------------------------------------------------
+# get_embedding_model — missing token (строка 139), missing model (строка 141)
+# ---------------------------------------------------------------------------
+
+def test_get_embedding_model_raises_when_token_is_empty() -> None:
+    """get_embedding_model выбрасывает AIConfigurationError при пустом token."""
+    from app.core.ai_config import get_embedding_model
+
+    settings = _settings(embedding_token="")
+
+    with pytest.raises(AIConfigurationError, match="embedding token"):
+        get_embedding_model(settings=settings)
+
+
+def test_get_embedding_model_raises_when_token_is_whitespace() -> None:
+    """get_embedding_model выбрасывает AIConfigurationError при whitespace token."""
+    from app.core.ai_config import get_embedding_model
+
+    settings = _settings(embedding_token="   ")
+
+    with pytest.raises(AIConfigurationError, match="embedding token"):
+        get_embedding_model(settings=settings)
+
+
+def test_get_embedding_model_raises_when_model_is_none() -> None:
+    """get_embedding_model выбрасывает AIConfigurationError когда model=None."""
+    from app.core.ai_config import get_embedding_model
+
+    settings = _settings(embedding_model=None)
+
+    with pytest.raises(AIConfigurationError, match="embedding_model"):
+        get_embedding_model(settings=settings)
+
+
+
+
+def test_invalidate_embedding_client_removes_matching_keys() -> None:
+    """invalidate_embedding_client удаляет только ключи указанной гильдии."""
+    from app.core import ai_config as ai_config_module
+    from app.core.ai_config import invalidate_embedding_client
+
+    settings = _settings()
+    get_embedding_client(settings=settings)
+    other_settings = _settings(embedding_token="other-secret")
+    get_embedding_client(100, settings=other_settings)
+
+    assert len(ai_config_module._embedding_clients) == 2
+
+    invalidate_embedding_client(None)
+
+    assert len(ai_config_module._embedding_clients) == 1
+    remaining_key = list(ai_config_module._embedding_clients.keys())[0]
+    assert remaining_key[0] == 100
+
+
+# ---------------------------------------------------------------------------
+# get_embedding_model — cache eviction old key (строки 152-153)
+# ---------------------------------------------------------------------------
+
+def test_get_embedding_model_evicts_old_key_for_same_guild(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """get_embedding_model удаляет старый ключ гильдии при изменении модели."""
+    from app.core import ai_config as ai_config_module
+    from app.core.ai_config import get_embedding_model
+
+    fake_embed = object()
+    fake_class = type("FakeEmbedding", (), {"__init__": lambda s, **kw: None})
+    monkeypatch.setattr("app.core.ai_config.OpenAIEmbedding", fake_class, raising=False)
+
+    # Вставляем старый ключ для guild_id=50
+    old_key = (50, "https://old.example/v1", "old-token", "old-model")
+    ai_config_module._embedding_models[old_key] = fake_embed  # type: ignore[assignment]
+
+    settings_new = _settings(
+        embedding_token="new-token",
+        embedding_model="text-embedding-ada-002",
+        embedding_api_url="https://new.example/v1",
+    )
+
+    try:
+        get_embedding_model(50, settings=settings_new)
+    except Exception:
+        pass  # OpenAIEmbedding может упасть — важно что старый ключ удалён
+
+    assert old_key not in ai_config_module._embedding_models
+
+
+# ---------------------------------------------------------------------------
+# invalidate_embedding_runtime — loop over _embedding_models (строки 181-182)
+# ---------------------------------------------------------------------------
+
+def test_invalidate_embedding_runtime_removes_model_cache() -> None:
+    """invalidate_embedding_runtime удаляет embedding model cache для гильдии."""
+    from app.core import ai_config as ai_config_module
+    from app.core.ai_config import invalidate_embedding_runtime
+
+    settings = _settings()
+    get_embedding_client(settings=settings)
+
+    fake_key_same = (None, settings.embedding_api_url, settings.embedding_token or "", "m1")
+    fake_key_other = (100, settings.embedding_api_url, settings.embedding_token or "", "m1")
+    ai_config_module._embedding_models[fake_key_same] = object()  # type: ignore[assignment]
+    ai_config_module._embedding_models[fake_key_other] = object()  # type: ignore[assignment]
+
+    invalidate_embedding_runtime(None)
+
+    assert fake_key_same not in ai_config_module._embedding_models
+    assert fake_key_other in ai_config_module._embedding_models
+
+
+# ---------------------------------------------------------------------------
+# get_mini_model — return statement (строка 251)
+# ---------------------------------------------------------------------------
+
+def test_get_mini_model_returns_mini_model_from_settings() -> None:
+    """get_mini_model возвращает mini_model из настроек."""
+    settings = _settings(mini_model="gpt-4o-mini")
+    guild_ai_config_cache._cache[77] = settings
+
+    result = get_mini_model(77)
+
+    assert result == "gpt-4o-mini"

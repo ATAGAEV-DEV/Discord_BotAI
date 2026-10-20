@@ -145,3 +145,43 @@ async def test_empty_report_ignore_prefix_disables_filter(
     mock_bot.report_generator.add_message.assert_awaited_once_with(
         123, message.content, "Test User", 456
     )
+
+
+# ---------------------------------------------------------------------------
+# initialize_guild_ai_configs (строки 19-24 в bot.py)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_initialize_guild_ai_configs_calls_load_all_and_ensure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """initialize_guild_ai_configs загружает все гильдии и вызывает ensure для каждой."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.core.bot import initialize_guild_ai_configs
+    from app.data import guild_ai_config_cache
+
+    # Создаём два fake guild объекта
+    guild1 = MagicMock()
+    guild1.id = 100
+    guild2 = MagicMock()
+    guild2.id = 200
+
+    load_all_mock = AsyncMock()
+    ensure_mock = AsyncMock()
+
+    # Патчим async_session как context manager
+    session_mock = MagicMock()
+    session_mock.__aenter__ = AsyncMock(return_value=session_mock)
+    session_mock.__aexit__ = AsyncMock(return_value=False)
+
+    monkeypatch.setattr("app.core.bot.guild_ai_config_cache.load_all", load_all_mock)
+    monkeypatch.setattr("app.core.bot.guild_ai_config_cache.ensure", ensure_mock)
+
+    with patch("app.core.bot.async_session", return_value=session_mock):
+        await initialize_guild_ai_configs([guild1, guild2])
+
+    load_all_mock.assert_awaited_once_with(session_mock)
+    assert ensure_mock.await_count == 2
+    ensure_mock.assert_any_await(session_mock, 100)
+    ensure_mock.assert_any_await(session_mock, 200)
