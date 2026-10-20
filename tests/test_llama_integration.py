@@ -413,28 +413,6 @@ def test_channel_history_clear_empties_messages() -> None:
     assert h.get_texts() == []
 
 
-def test_channel_history_is_not_expired_immediately() -> None:
-    """Свежая история не считается истёкшей."""
-    h = ChannelHistory()
-    assert not h.is_expired()
-
-
-def test_channel_history_is_expired_after_ttl() -> None:
-    """История считается истёкшей когда _last_activity далеко в прошлом."""
-    h = ChannelHistory()
-    h._last_activity -= 2000.0  # имитируем прошедшее время > TTL
-    assert h.is_expired(ttl=1800.0)
-
-
-def test_channel_history_add_pair_resets_expiry() -> None:
-    """add_pair обновляет _last_activity, сбрасывая таймер TTL."""
-    h = ChannelHistory()
-    h._last_activity -= 2000.0
-    assert h.is_expired(ttl=1800.0)
-    h.add_pair({"role": "user", "content": "ping"}, {"role": "assistant", "content": "pong"})
-    assert not h.is_expired(ttl=1800.0)
-
-
 # ---------------------------------------------------------------------------
 # LlamaIndexManager channel history management tests
 # ---------------------------------------------------------------------------
@@ -464,19 +442,6 @@ def test_get_channel_history_stores_server_mapping(
     """server_id сохраняется в _channel_server_map."""
     manager.get_channel_history(333, server_id=99)
     assert manager._channel_server_map[333] == 99
-
-
-def test_get_channel_history_resets_expired_history(
-    manager: LlamaIndexManager,
-) -> None:
-    """Истёкшая история сбрасывается при следующем get_channel_history."""
-    history = manager.get_channel_history(444)
-    history.add_pair({"role": "user", "content": "old"}, {"role": "assistant", "content": "msg"})
-    history._last_activity -= 2000.0  # истекаем TTL
-
-    history2 = manager.get_channel_history(444)
-    assert history2 is history  # тот же объект
-    assert history2.get_messages() == []  # но очищен
 
 
 

@@ -20,7 +20,6 @@ REPORT_TIME_LIMIT: int = 60  # Время ожидания в минутах д�
 # RAG и краткосрочная память канала
 RAG_MIN_RELEVANCE_SCORE: float = 0.20  # Минимальный score для включения фрагмента в контекст
 CONVERSATION_MAX_PAIRS: int = 20  # Максимальное число пар (user, assistant) в памяти канала
-CONVERSATION_TTL: float = 36000.0  # TTL канала без активности (сек.), после которого история сбрасывается
 
 POLZA_PROVIDER = "polza"
 POLZA_API_URL = "https://api.polza.ai/api/v1"

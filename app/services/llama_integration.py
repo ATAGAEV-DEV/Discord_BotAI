@@ -1,5 +1,4 @@
 import asyncio
-import time
 from collections import deque
 from typing import Any
 
@@ -10,7 +9,7 @@ from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
 from app.core.ai_config import get_embedding_model
-from app.core.config import CONVERSATION_MAX_PAIRS, CONVERSATION_TTL, RAG_MIN_RELEVANCE_SCORE
+from app.core.config import CONVERSATION_MAX_PAIRS, RAG_MIN_RELEVANCE_SCORE
 from app.data import guild_ai_config_cache
 
 QUERY_TIMEOUT = 30.0
@@ -30,13 +29,11 @@ class ChannelHistory:
         self.max_pairs = max_pairs
         # maxlen = max_pairs * 2, т.к. каждая пара = 2 сообщения
         self._messages: deque[dict[str, str]] = deque(maxlen=max_pairs * 2)
-        self._last_activity: float = time.monotonic()
 
     def add_pair(self, user_msg: dict[str, str], assistant_msg: dict[str, str]) -> None:
         """Добавляет пару (user, assistant) в буфер."""
         self._messages.append(user_msg)
         self._messages.append(assistant_msg)
-        self._last_activity = time.monotonic()
 
     def get_messages(self) -> list[dict[str, str]]:
         """Возвращает все сообщения в хронологическом порядке."""
@@ -49,11 +46,6 @@ class ChannelHistory:
     def clear(self) -> None:
         """Сбрасывает историю."""
         self._messages.clear()
-        self._last_activity = time.monotonic()
-
-    def is_expired(self, ttl: float = CONVERSATION_TTL) -> bool:
-        """Возвращает True, если канал неактивен дольше TTL."""
-        return (time.monotonic() - self._last_activity) > ttl
 
 
 class LlamaIndexManager:
@@ -97,15 +89,12 @@ class LlamaIndexManager:
     def get_channel_history(self, channel_id: int, server_id: int | None = None) -> ChannelHistory:
         """Возвращает ChannelHistory для канала, создаёт при первом обращении.
 
-        Если история истекла по TTL — сбрасывает и возвращает чистую.
         ``server_id`` сохраняется для последующей очистки по серверу.
         """
         history = self._channel_histories.get(channel_id)
         if history is None:
             history = ChannelHistory()
             self._channel_histories[channel_id] = history
-        elif history.is_expired():
-            history.clear()
 
         if server_id is not None:
             self._channel_server_map[channel_id] = server_id

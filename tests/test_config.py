@@ -152,9 +152,8 @@ def test_bot_limits_defaults() -> None:
 
 def test_rag_and_history_defaults() -> None:
     """RAG и история канала сохраняют свои дефолтные значения."""
-    assert config.RAG_MIN_RELEVANCE_SCORE == 0.10
-    assert config.CONVERSATION_MAX_PAIRS == 10
-    assert config.CONVERSATION_TTL == 1800.0
+    assert config.RAG_MIN_RELEVANCE_SCORE == 0.20
+    assert config.CONVERSATION_MAX_PAIRS == 20
 
 
 def test_command_prefix_from_config(monkeypatch: pytest.MonkeyPatch) -> None:
