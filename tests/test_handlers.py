@@ -585,8 +585,14 @@ async def test_ai_generate_returns_timeout_message_on_timeout() -> None:
     """ai_generate возвращает сообщение о таймауте при asyncio.TimeoutError."""
     import asyncio
 
+    def _wait_for_raising(coro, timeout):
+        # Закрываем coroutine явно, чтобы не получить RuntimeWarning
+        # "coroutine was never awaited" от GC между тестами.
+        coro.close()
+        raise asyncio.TimeoutError()
+
     with (
-        patch("app.core.handlers.asyncio.wait_for", side_effect=asyncio.TimeoutError()),
+        patch("app.core.handlers.asyncio.wait_for", side_effect=_wait_for_raising),
         patch("app.core.handlers.llama_manager"),
         patch("app.core.handlers.user_prompt", return_value="sys"),
         patch("app.core.handlers.user_descriptions_cache.get", return_value={}),
