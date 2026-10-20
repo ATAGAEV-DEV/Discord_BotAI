@@ -164,7 +164,9 @@ async def test_ai_generate_processes_context_and_response() -> None:
         "Alice", 12345, emoji_ids={"smile": "100"}, text="Как дела?", mentioned_names=[]
     )
     mock_descriptions.assert_called_once_with(12345)
-    mock_llama.query_relevant_context.assert_awaited_once_with(12345, "Как дела?", limit=7, history_texts=[])
+    mock_llama.query_relevant_context.assert_awaited_once_with(
+        12345, "Как дела?", limit=7, history_texts=[]
+    )
     mock_enrich.assert_called_once_with(["raw context"], {"Alice": "Алиса"})
     mock_create.assert_awaited_once()
     assert mock_create.await_args.kwargs["model"] == "test-model"
@@ -290,7 +292,9 @@ async def test_ai_generate_sends_only_current_guild_emojis(
     assert "{emoji_list}" not in system_prompt
     assert "{user_info}" not in system_prompt
     assert messages[1]["content"] == "[Пользователь: Alice] Как дела?"
-    mock_llama.query_relevant_context.assert_awaited_once_with(server_id, "Как дела?", limit=15, history_texts=[])
+    mock_llama.query_relevant_context.assert_awaited_once_with(
+        server_id, "Как дела?", limit=15, history_texts=[]
+    )
 
 
 @pytest.mark.asyncio
@@ -518,7 +522,9 @@ async def test_ai_generate_resolves_mentions_and_uses_guild_descriptions_without
         assert "Обычная история" in messages[1]["content"]
     expected_user_message = {"role": "user", "content": f"[Пользователь: Alice] {expected_text}"}
     assert messages[-1] == expected_user_message
-    mock_llama.query_relevant_context.assert_awaited_once_with(server_id, expected_text, limit=7, history_texts=[])
+    mock_llama.query_relevant_context.assert_awaited_once_with(
+        server_id, expected_text, limit=7, history_texts=[]
+    )
     mock_llama.index_messages.assert_called_once_with(
         server_id,
         [expected_user_message, {"role": "assistant", "content": "Ответ."}],

@@ -37,7 +37,7 @@ class AIModels(commands.Cog):
     @commands.guild_only()
     @admin_or_owner()
     async def model_add_command(self, ctx: commands.Context, *, name: str) -> None:
-        """Добавить модель в список. Использование: !model_add <имя>"""
+        """Добавить модель в список. Использование: !model_add <имя>."""
         async with async_session() as session:
             result = await ai_models.add(session, name)
         await ctx.send(result)
@@ -46,7 +46,7 @@ class AIModels(commands.Cog):
     @commands.guild_only()
     @admin_or_owner()
     async def model_remove_command(self, ctx: commands.Context, *, name: str) -> None:
-        """Убрать модель из списка. Использование: !model_remove <имя>"""
+        """Убрать модель из списка. Использование: !model_remove <имя>."""
         async with async_session() as session:
             result = await ai_models.remove(session, name)
         await ctx.send(result)
@@ -57,7 +57,7 @@ class AIModels(commands.Cog):
     async def model_set_command(
         self, ctx: commands.Context, model_type: str, *, name: str
     ) -> None:
-        """Выбрать модель для сервера. Использование: !model_set <chat|mini|embedding> <имя>"""
+        """Выбрать модель для сервера. Использование: !model_set <chat|mini|embedding> <имя>."""
         model_type = model_type.lower().strip()
         if model_type not in {"chat", "mini", "embedding"}:
             await ctx.send("❌ Тип модели должен быть `chat`, `mini` или `embedding`.")
@@ -71,7 +71,10 @@ class AIModels(commands.Cog):
 
         async with async_session() as session:
             if not await ai_models.exists(session, name):
-                await ctx.send(f"❌ Модель `{name}` не найдена в списке. Сначала добавьте её через `!model_add`.")
+                await ctx.send(
+                    f"❌ Модель `{name}` не найдена в списке. "
+                    "Сначала добавьте её через `!model_add`."
+                )
                 return
             try:
                 await update_model(session, ctx.guild.id, field, name)

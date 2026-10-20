@@ -229,7 +229,10 @@ async def test_query_relevant_context_returns_node_texts(
     vector_store = MagicMock()
     index = MagicMock()
     retriever = MagicMock()
-    nodes = [SimpleNamespace(text="Первый контекст", score=1.0), SimpleNamespace(text="Второй контекст", score=1.0)]
+    nodes = [
+        SimpleNamespace(text="Первый контекст", score=1.0),
+        SimpleNamespace(text="Второй контекст", score=1.0),
+    ]
     index.as_retriever.return_value = retriever
     retriever.retrieve.return_value = nodes
     to_thread = AsyncMock(side_effect=_execute_to_thread)

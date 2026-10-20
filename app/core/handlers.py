@@ -112,7 +112,10 @@ async def ai_generate(
         if history_messages:
             messages.append({
                 "role": "system",
-                "content": "Ниже — последние сообщения этого канала для контекста текущего разговора:",
+                "content": (
+                    "Ниже — последние сообщения этого канала для "
+                    "контекста текущего разговора:"
+                ),
             })
             messages.extend(history_messages)
 

@@ -8,7 +8,6 @@ from collections.abc import Mapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import AISettings
-from app.data import models
 from app.data.repositories import guild_ai_config
 
 _cache: dict[int, AISettings] = {}

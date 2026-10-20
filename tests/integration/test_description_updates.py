@@ -4,7 +4,6 @@ from collections.abc import Awaitable, Callable
 from types import ModuleType
 
 import pytest
-from sqlalchemy import text
 
 from app.data import emoji_descriptions_cache, models, request, user_descriptions_cache
 from tests.integration.conftest import Databases
