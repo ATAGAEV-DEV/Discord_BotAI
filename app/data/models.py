@@ -313,6 +313,15 @@ class UserDescription(Base):
         return f"<UserDescription(nick='{self.nick}', guild_id={self.guild_id})>"
 
 
+class AIModel(Base):
+    """Справочник допустимых имён AI-моделей."""
+
+    __tablename__ = "ai_models"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), nullable=False, unique=True)
+
+
 class BotAdmin(Base):
     """Администратор бота, назначенный для конкретного Discord-сервера."""
 

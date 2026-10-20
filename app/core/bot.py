@@ -55,6 +55,7 @@ class DisBot(commands.Bot):
         """Загрузка расширений (Cogs) при старте бота."""
         await self.load_extension("app.cogs.general")
         await self.load_extension("app.cogs.admin")
+        await self.load_extension("app.cogs.ai_models")
         await self.load_extension("app.cogs.youtube")
         await self.load_extension("app.cogs.toxic")
         await self.load_extension("app.cogs.nicknames")

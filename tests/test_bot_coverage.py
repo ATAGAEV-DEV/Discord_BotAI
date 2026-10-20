@@ -12,6 +12,7 @@ from app.core.bot import DisBot
 _EXTENSIONS = (
     "app.cogs.general",
     "app.cogs.admin",
+    "app.cogs.ai_models",
     "app.cogs.youtube",
     "app.cogs.toxic",
     "app.cogs.nicknames",

@@ -196,3 +196,34 @@ def clear_locks() -> None:
     for guild_id, lock in list(_locks.items()):
         if not lock.locked():
             _locks.pop(guild_id, None)
+
+
+async def update_model(
+    session: DualSessionProxy,
+    guild_id: int,
+    field: str,
+    model_name: str,
+) -> None:
+    """Обновляет chat_model или mini_model для гильдии.
+
+    ``field`` должен быть ``'chat_model'`` или ``'mini_model'``.
+    Выбрасывает ``GuildAIConfigError`` если запись не найдена или field некорректен.
+    """
+    if field not in {"chat_model", "mini_model"}:
+        raise GuildAIConfigError(f"Некорректное поле модели: {field!r}")
+
+    from sqlalchemy import update as sa_update
+
+    stmt = (
+        sa_update(GuildAIConfig)
+        .where(GuildAIConfig.guild_id == guild_id)
+        .values(**{field: model_name})
+    )
+    stmt.is_dml = True  # type: ignore[attr-defined]
+    result = await session.execute(stmt)
+    if result.rowcount == 0:
+        raise GuildAIConfigError(f"AI-конфигурация гильдии {guild_id} не найдена")
+    await session.commit()
+    from app.data import guild_ai_config_cache
+    guild_ai_config_cache.invalidate(guild_id)
+
