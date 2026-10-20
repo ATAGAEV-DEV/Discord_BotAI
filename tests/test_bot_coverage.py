@@ -13,6 +13,7 @@ _EXTENSIONS = (
     "app.cogs.general",
     "app.cogs.admin",
     "app.cogs.ai_models",
+    "app.cogs.ai_providers",
     "app.cogs.youtube",
     "app.cogs.toxic",
     "app.cogs.nicknames",

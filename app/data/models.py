@@ -322,6 +322,17 @@ class AIModel(Base):
     name = Column(String(255), nullable=False, unique=True)
 
 
+class AIProvider(Base):
+    """Справочник AI-провайдеров (имя, адрес, токен)."""
+
+    __tablename__ = "ai_providers"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), nullable=False, unique=True)
+    api_url = Column(String(500), nullable=False)
+    token = Column(String(1000), nullable=False)
+
+
 class BotAdmin(Base):
     """Администратор бота, назначенный для конкретного Discord-сервера."""
 

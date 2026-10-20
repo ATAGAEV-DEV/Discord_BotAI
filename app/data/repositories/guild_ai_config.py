@@ -228,3 +228,45 @@ async def update_model(
     guild_ai_config_cache.invalidate(guild_id)
     await guild_ai_config_cache.ensure(session, guild_id)
 
+
+async def update_provider(
+    session: DualSessionProxy,
+    guild_id: int,
+    provider_type: str,
+    name: str,
+    api_url: str,
+    token: str,
+) -> None:
+    """Обновляет провайдера (имя, адрес, токен) для гильдии.
+
+    ``provider_type`` должен быть ``'chat'`` или ``'embedding'``.
+    Выбрасывает ``GuildAIConfigError`` если запись не найдена или provider_type некорректен.
+    """
+    if provider_type not in {"chat", "embedding"}:
+        raise GuildAIConfigError(f"Некорректный тип провайдера: {provider_type!r}")
+
+    if provider_type == "chat":
+        values = {"provider": name, "api_url": api_url, "token": token}
+    else:
+        values = {
+            "embedding_provider": name,
+            "embedding_api_url": api_url,
+            "embedding_token": token,
+        }
+
+    from sqlalchemy import update as sa_update
+
+    stmt = (
+        sa_update(GuildAIConfig)
+        .where(GuildAIConfig.guild_id == guild_id)
+        .values(**values)
+    )
+    stmt.is_dml = True  # type: ignore[attr-defined]
+    result = await session.execute(stmt)
+    if result.rowcount == 0:
+        raise GuildAIConfigError(f"AI-конфигурация гильдии {guild_id} не найдена")
+    await session.commit()
+    from app.data import guild_ai_config_cache
+    guild_ai_config_cache.invalidate(guild_id)
+    await guild_ai_config_cache.ensure(session, guild_id)
+
