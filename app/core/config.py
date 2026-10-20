@@ -13,11 +13,11 @@ REPORT_IGNORE_PREFIX: str = "?"  # Сообщения с этим префикс
 COMMAND_PREFIX: str = "!"  # Префикс команд Discord-бота
 BOT_TIMEZONE: str = "Europe/Moscow"  # Таймзона планировщика и логов YouTube
 YOUTUBE_CHECK_INTERVAL_MINUTES: int = 5  # Частота проверки новых видео в минутах
-CONTEXT_LIMIT: int = 100  # Количество строк контекста для RAG
 REPORT_MSG_LIMIT: int = 15  # Порог сообщений для создания отчёта
 REPORT_TIME_LIMIT: int = 60  # Время ожидания в минутах для создания отчёта
 
 # RAG и краткосрочная память канала
+CONTEXT_LIMIT: int = 100  # Количество строк контекста для RAG
 RAG_MIN_RELEVANCE_SCORE: float = 0.20  # Минимальный score для включения фрагмента в контекст
 CONVERSATION_MAX_PAIRS: int = 20  # Максимальное число пар (user, assistant) в памяти канала
 
