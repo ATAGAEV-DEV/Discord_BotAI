@@ -17,7 +17,7 @@ from tests.postgres_support import (
     validate_test_url,
 )
 
-REMOTE = "postgresql+asyncpg://bot_test:fake@91.205.220.24:5432/test_atagaev"
+REMOTE = "postgresql+asyncpg://bot_test:fake@192.168.0.147:5433/test_atagaev"
 DIALECT = SimpleNamespace(name="postgresql", driver="asyncpg")
 
 
@@ -27,10 +27,10 @@ DIALECT = SimpleNamespace(name="postgresql", driver="asyncpg")
         None,
         "",
         "not-a-url-secret",
-        REMOTE.replace("5432", "bad-port"),
+        REMOTE.replace("5433", "bad-port"),
         REMOTE.replace("test_atagaev", "atagaev"),
-        REMOTE.replace("91.205.220.24", "127.0.0.1"),
-        REMOTE.replace("5432", "5433"),
+        REMOTE.replace("192.168.0.147", "127.0.0.1"),
+        REMOTE.replace("5433", "5432"),
         REMOTE.replace("+asyncpg", ""),
         REMOTE.replace(":fake", ""),
         REMOTE + "?host=another-server",
@@ -79,7 +79,7 @@ def test_test_environment_replaces_application_url(
 def test_connection_guard_requires_active_schema() -> None:
     """Даже тестовая база недоступна без собственной активной схемы."""
     params = {
-        "host": "91.205.220.24", "port": 5432, "database": "test_atagaev",
+        "host": "192.168.0.147", "port": 5433, "database": "test_atagaev",
         "user": "bot_test", "password": "fake", "server_settings": {"search_path": "public"},
     }
     with pytest.raises(RuntimeError, match="запрещено"):
@@ -100,7 +100,7 @@ def test_connection_guard_requires_active_schema() -> None:
     "overrides",
     [
         {"host": "production"},
-        {"port": 5433},
+        {"port": 5432},
         {"password": ""},
         {"dsn": "postgresql://production"},
         {"server_settings": {"search_path": "public"}},
@@ -111,7 +111,7 @@ def test_guard_rejects_driver_parameter_overrides(overrides: dict) -> None:
     """connect_args не может обойти URL-валидацию или расширить search_path."""
     schema = "pytest_" + "0" * 32
     params = {
-        "host": "91.205.220.24", "port": 5432, "database": "test_atagaev",
+        "host": "192.168.0.147", "port": 5433, "database": "test_atagaev",
         "user": "bot_test", "password": "fake", "server_settings": {"search_path": schema},
     }
     ACTIVE_SCHEMAS.add(schema)

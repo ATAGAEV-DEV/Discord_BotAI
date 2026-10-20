@@ -11,7 +11,7 @@ from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import ArgumentError
 
 ENDPOINTS = {
-    "TEST_DATABASE_URL": ("91.205.220.24", 5432),
+    "TEST_DATABASE_URL": ("192.168.0.147", 5433),
 }
 ACTIVE_SCHEMAS: set[str] = set()
 

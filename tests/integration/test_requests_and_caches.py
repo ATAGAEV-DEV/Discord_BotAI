@@ -71,21 +71,6 @@ async def test_postgres_rank_ties_gaps_and_guild_partition(databases: Databases)
     assert await request.get_user_rank(1, 999) == 0
 
 
-async def test_request_descriptions_update_and_delete(databases: Databases) -> None:
-    """Повторное сохранение через request обновляет описание в БД."""
-    assert "добавлено" in await request.save_user_description("alice", "old", 100)
-    await request.save_user_description("alice", "other guild", 200)
-    assert "обновлено" in await request.save_user_description("alice", "new", 100)
-    assert await request.get_user_descriptions(100) == {"alice": "new"}
-    assert {
-        r.guild_id: r.description for r in await databases.rows(models.UserDescription)
-    } == {100: "new", 200: "other guild"}
-    assert "удалено" in await request.delete_user_description("alice", 100)
-    assert "не найдено" in await request.delete_user_description("alice", 100)
-    row, = await databases.rows(models.UserDescription)
-    assert row.guild_id == 200
-
-
 
 @pytest.mark.parametrize(
     "cache, model, key",

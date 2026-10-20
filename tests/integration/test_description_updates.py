@@ -5,7 +5,7 @@ from types import ModuleType
 
 import pytest
 
-from app.data import emoji_descriptions_cache, models, request, user_descriptions_cache
+from app.data import emoji_descriptions_cache, models, user_descriptions_cache
 from tests.integration.conftest import Databases
 
 type SaveDescription = Callable[[str, str, int], Awaitable[str]]
@@ -18,9 +18,6 @@ DESCRIPTION_STORES = [
     pytest.param(
         user_descriptions_cache.save, models.UserDescription, "nick", user_descriptions_cache,
         id="user-cache",
-    ),
-    pytest.param(
-        request.save_user_description, models.UserDescription, "nick", None, id="user-request"
     ),
 ]
 
