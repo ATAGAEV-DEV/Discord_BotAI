@@ -4,7 +4,7 @@ from typing import ClassVar
 
 import pytest
 
-from app.tools.prompt import RANK_NAMES, SYSTEM_PROMPT
+from app.tools.prompt import SYSTEM_PROMPT
 from app.tools.utils import (
     contains_only_urls,
     count_tokens,
@@ -117,13 +117,13 @@ class TestGetRankDescription:
     def test_zero_messages(self) -> None:
         """0 сообщений — 'Человек'."""
         rank = get_rank_description(0)
-        assert rank["description"] == RANK_NAMES[0]
+        assert rank["description"] == "Человек"
         assert rank["rank_level"] == 0
 
     def test_1_message(self) -> None:
         """1 сообщение — 'Начинающий бич'."""
         rank = get_rank_description(1)
-        assert rank["description"] == RANK_NAMES[1]
+        assert rank["description"] == "Начинающий бич"
         assert rank["rank_level"] == 1
 
     def test_49_messages(self) -> None:
@@ -134,25 +134,25 @@ class TestGetRankDescription:
     def test_50_messages(self) -> None:
         """50 сообщений — 'Радужный бич'."""
         rank = get_rank_description(50)
-        assert rank["description"] == RANK_NAMES[2]
+        assert rank["description"] == "Радужный бич"
         assert rank["rank_level"] == 2
 
     def test_100_messages(self) -> None:
         """100 сообщений — 'Бич'."""
         rank = get_rank_description(100)
-        assert rank["description"] == RANK_NAMES[3]
+        assert rank["description"] == "Бич"
         assert rank["rank_level"] == 3
 
     def test_200_messages(self) -> None:
         """200 сообщений — 'Босс бичей'."""
         rank = get_rank_description(200)
-        assert rank["description"] == RANK_NAMES[4]
+        assert rank["description"] == "Босс бичей"
         assert rank["rank_level"] == 4
 
     def test_500_messages(self) -> None:
         """500 сообщений — 'Бич-император'."""
         rank = get_rank_description(500)
-        assert rank["description"] == RANK_NAMES[5]
+        assert rank["description"] == "Бич-император"
         assert rank["rank_level"] == 5
 
     def test_1000_messages(self) -> None:

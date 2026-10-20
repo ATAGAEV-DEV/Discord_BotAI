@@ -15,9 +15,8 @@ from app.data.models import UserDescription
 
 @pytest.fixture(autouse=True)
 def empty_user_cache(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Изолирует кэш и флаг загрузки, восстанавливая их после каждого теста."""
+    """Изолирует кэш, восстанавливая его после каждого теста."""
     monkeypatch.setattr(user_descriptions_cache, "_cache", {})
-    monkeypatch.setattr(user_descriptions_cache, "_loaded", False)
 
 
 @pytest.fixture
@@ -79,7 +78,6 @@ async def test_load_all_replaces_cache_and_groups_rows(
         100: {"Alice": "Алиса", "Bob": "Боб"},
         200: {"Alice": "Другая Алиса"},
     }
-    assert user_descriptions_cache._loaded is True
     assert "Кэш описаний загружен: 3 записей" in capsys.readouterr().out
     assert database_session.context_entered is True
     assert database_session.context_exited is True
@@ -96,7 +94,6 @@ async def test_load_all_with_empty_result_clears_cache(
     await user_descriptions_cache.load_all()
 
     assert user_descriptions_cache._cache == {}
-    assert user_descriptions_cache._loaded is True
     assert "Кэш описаний загружен: 0 записей" in capsys.readouterr().out
 
 
@@ -142,34 +139,6 @@ def test_get_returns_copy_without_exposing_cache() -> None:
 
     assert user_descriptions_cache.get(100) == {"Alice": "Алиса"}
 
-
-def test_get_all_returns_empty_dict_for_empty_cache() -> None:
-    """Пустой кэш возвращается в виде пустого объединённого словаря."""
-    assert user_descriptions_cache.get_all() == {}
-
-
-def test_get_all_merges_guilds_and_replaces_conflicting_nicks() -> None:
-    """Описания объединяются, а повторный ник получает последнее описание."""
-    user_descriptions_cache._cache.update(
-        {
-            100: {"Alice": "Первая Алиса", "Bob": "Боб"},
-            200: {"Alice": "Другая Алиса", "Charlie": "Чарли"},
-        }
-    )
-
-    assert user_descriptions_cache.get_all() == {
-        "Alice": "Другая Алиса", "Bob": "Боб", "Charlie": "Чарли"
-    }
-
-
-def test_get_all_returns_copy_without_exposing_cache() -> None:
-    """Изменение объединённого словаря не затрагивает кэш серверов."""
-    user_descriptions_cache._cache[100] = {"Alice": "Алиса"}
-
-    descriptions = user_descriptions_cache.get_all()
-    descriptions.clear()
-
-    assert user_descriptions_cache.get(100) == {"Alice": "Алиса"}
 
 
 @pytest.mark.asyncio
@@ -277,13 +246,11 @@ async def test_remove_reports_result_and_preserves_other_descriptions(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("loaded", [False, True])
 async def test_load_all_wraps_database_error_and_preserves_state(
-    database_session: MagicMock, loaded: bool
+    database_session: MagicMock,
 ) -> None:
-    """Ошибка загрузки сохраняет старые описания и значение флага загрузки."""
+    """Ошибка загрузки сохраняет старые описания."""
     user_descriptions_cache._cache[100] = {"Alice": "Алиса"}
-    user_descriptions_cache._loaded = loaded
     database_session.execute.side_effect = SQLAlchemyError("execute failed")
 
     with pytest.raises(RuntimeError) as error:
@@ -294,7 +261,6 @@ async def test_load_all_wraps_database_error_and_preserves_state(
     )
     assert isinstance(error.value.__cause__, SQLAlchemyError)
     assert user_descriptions_cache.get(100) == {"Alice": "Алиса"}
-    assert user_descriptions_cache._loaded is loaded
     database_session.commit.assert_not_awaited()
     assert database_session.context_exited is True
 

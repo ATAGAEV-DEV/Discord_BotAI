@@ -47,21 +47,6 @@ def _settings_for(
     )
 
 
-def get_provider_config(name: str | None = None, *, guild_id: int | None = None) -> dict[str, str]:
-    """Возвращает chat-конфиг для совместимых старых импортов.
-
-    ``name`` сохранён как legacy-параметр. Provider registry больше не
-    используется: имя и URL берутся из настроек текущего runtime.
-    """
-    del name
-    settings = _settings_for(guild_id, None, require_tokens=False)
-    if not settings.token or not settings.token.strip():
-        raise AIConfigurationError("Отсутствует chat token")
-    return {
-        "api_key": settings.token or "",
-        "base_url": settings.api_url,
-    }
-
 
 def get_embedding_config(
     provider: str | None = None,
@@ -189,50 +174,11 @@ def clear_client_caches() -> None:
     _embedding_models.clear()
 
 
-def get_chat_client(
-    guild_id: int | None = None,
-    *,
-    settings: AISettings | None = None,
-) -> AsyncOpenAI:
-    """Явное имя chat client API."""
-    return get_client(guild_id, settings=settings)
-
-
-def clear_chat_client_cache() -> None:
-    """Очищает только chat namespace."""
-    _chat_clients.clear()
-
-
-def clear_embedding_client_cache() -> None:
-    """Очищает только embedding namespace."""
-    _embedding_clients.clear()
-    _embedding_models.clear()
-
 
 def get_active_provider() -> str:
     """Возвращает provider из текущей конфигурации."""
     return get_ai_settings().provider
 
-
-def set_active_provider(name: str) -> None:
-    """Проверяет legacy provider name без фиксированного allowlist.
-
-    Persistent provider selection выполняется через AI-конфигурацию гильдии
-    или переменные окружения; helper оставлен для совместимых импортов.
-    """
-    if not isinstance(name, str) or not name.strip():
-        raise ValueError("Provider не может быть пустым")
-
-
-def get_available_providers() -> list[str]:
-    """Возвращает provider из текущей конфигурации без фиксированного списка."""
-    provider = get_active_provider()
-    return [provider] if provider else []
-
-
-def next_provider() -> str:
-    """Возвращает текущий provider для совместимости со старым API."""
-    return get_active_provider()
 
 
 def get_model(guild_id: int | None = None, *, settings: AISettings | None = None) -> str:
@@ -251,32 +197,17 @@ def get_mini_model(guild_id: int | None = None, *, settings: AISettings | None =
     return resolved.mini_model
 
 
-def set_model(model: str, *, guild_id: int | None = None) -> None:
-    """Не изменяет persistent config; оставлен только для legacy compatibility."""
-    if not isinstance(model, str) or not model.strip():
-        raise ValueError("Chat model не может быть пустой")
-    if guild_id is not None:
-        raise ValueError("Изменение chat model выполняется через repository гильдии")
-
 
 __all__ = [
-    "clear_chat_client_cache",
     "clear_client_caches",
-    "clear_embedding_client_cache",
     "get_active_provider",
-    "get_available_providers",
-    "get_chat_client",
     "get_client",
     "get_embedding_client",
     "get_embedding_config",
     "get_embedding_model",
     "get_mini_model",
     "get_model",
-    "get_provider_config",
     "invalidate_chat_client",
     "invalidate_embedding_client",
     "invalidate_embedding_runtime",
-    "next_provider",
-    "set_active_provider",
-    "set_model",
 ]

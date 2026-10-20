@@ -10,7 +10,6 @@ from app.core.ai_config import (
     get_embedding_config,
     get_mini_model,
     get_model,
-    get_provider_config,
     invalidate_chat_client,
     invalidate_embedding_runtime,
 )
@@ -103,24 +102,6 @@ def test_environment_values_are_separate(monkeypatch: pytest.MonkeyPatch) -> Non
     assert settings.embedding_model == "embed-model"
 
 
-def test_provider_helpers_accept_arbitrary_names(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Runtime helpers не ограничивают provider names фиксированным списком."""
-    monkeypatch.setenv("AI_PROVIDER", "chat-provider.example")
-    monkeypatch.setenv("AI_API_URL", "https://chat-provider.example/v1")
-    monkeypatch.setenv("AI_TOKEN", "chat-secret")
-
-    chat_config = get_provider_config("another-chat-provider")
-    embedding_config = get_embedding_config(
-        "another-embedding-provider",
-        settings=_settings(),
-    )
-
-    assert chat_config == {
-        "api_key": "chat-secret",
-        "base_url": "https://chat-provider.example/v1",
-    }
-    assert embedding_config["base_url"] == "https://embedding.example/v1"
-
 
 def test_embedding_token_never_falls_back_to_chat_token() -> None:
     """Отсутствующий embedding token не подменяется chat token."""
@@ -204,42 +185,6 @@ def test_embedding_config_keeps_embedding_url_and_secret_internal() -> None:
 
 
 # ---------------------------------------------------------------------------
-# get_provider_config (строки 58-63)
-# ---------------------------------------------------------------------------
-
-def test_get_provider_config_returns_chat_credentials() -> None:
-    """get_provider_config возвращает chat api_key и base_url."""
-    settings = _settings()
-    guild_ai_config_cache._cache[10] = settings
-
-    config = get_provider_config(guild_id=10)
-
-    assert config["api_key"] == settings.token
-    assert config["base_url"] == settings.api_url
-
-
-def test_get_provider_config_raises_without_token() -> None:
-    """get_provider_config выбрасывает AIConfigurationError если chat token отсутствует."""
-    from app.core.config import AIConfigurationError
-
-    settings = _settings(token=None)
-    guild_ai_config_cache._cache[11] = settings
-
-    with pytest.raises(AIConfigurationError, match="chat token"):
-        get_provider_config(guild_id=11)
-
-
-def test_get_provider_config_ignores_name_parameter() -> None:
-    """Legacy параметр name игнорируется — используются текущие настройки."""
-    settings = _settings()
-    guild_ai_config_cache._cache[12] = settings
-
-    config = get_provider_config(name="ignored-name", guild_id=12)
-
-    assert config["base_url"] == settings.api_url
-
-
-# ---------------------------------------------------------------------------
 # get_embedding_config — missing token (строка 76)
 # ---------------------------------------------------------------------------
 
@@ -270,58 +215,7 @@ def test_get_client_raises_for_missing_token() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Legacy API: get_chat_client, clear_chat_client_cache,
-#             clear_embedding_client_cache (строки 198, 203, 208-209)
-# ---------------------------------------------------------------------------
-
-def test_get_chat_client_delegates_to_get_client() -> None:
-    """get_chat_client возвращает тот же объект, что и get_client."""
-    from app.core.ai_config import get_chat_client
-
-    settings = _settings()
-    client_via_get = get_client(settings=settings)
-    client_via_chat = get_chat_client(settings=settings)
-
-    assert client_via_get is client_via_chat
-
-
-def test_clear_chat_client_cache_clears_only_chat() -> None:
-    """clear_chat_client_cache очищает только chat namespace."""
-    from app.core import ai_config as ai_config_module
-    from app.core.ai_config import clear_chat_client_cache
-
-    settings = _settings()
-    get_client(settings=settings)
-    get_embedding_client(settings=settings)
-
-    clear_chat_client_cache()
-
-    assert len(ai_config_module._chat_clients) == 0
-    assert len(ai_config_module._embedding_clients) == 1
-
-
-def test_clear_embedding_client_cache_clears_only_embedding() -> None:
-    """clear_embedding_client_cache очищает только embedding namespace."""
-    from app.core import ai_config as ai_config_module
-    from app.core.ai_config import clear_embedding_client_cache
-
-    settings = _settings()
-    get_client(settings=settings)
-    get_embedding_client(settings=settings)
-    # Вставляем fake объект напрямую в _embedding_models, минуя OpenAIEmbedding
-    fake_key = (None, settings.embedding_api_url, settings.embedding_token or "", settings.embedding_model or "")
-    ai_config_module._embedding_models[fake_key] = object()  # type: ignore[assignment]
-
-    clear_embedding_client_cache()
-
-    assert len(ai_config_module._chat_clients) == 1
-    assert len(ai_config_module._embedding_clients) == 0
-    assert len(ai_config_module._embedding_models) == 0
-
-
-# ---------------------------------------------------------------------------
-# get_active_provider, get_available_providers, next_provider,
-# set_active_provider (строки 214, 223-230, 235)
+# get_active_provider (строка 214)
 # ---------------------------------------------------------------------------
 
 def test_get_active_provider_returns_provider_from_settings(
@@ -335,79 +229,6 @@ def test_get_active_provider_returns_provider_from_settings(
 
     assert get_active_provider() == "test-provider"
 
-
-def test_get_available_providers_returns_list_with_active_provider(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """get_available_providers возвращает список с одним текущим провайдером."""
-    from app.core.ai_config import get_available_providers
-
-    monkeypatch.setenv("AI_PROVIDER", "my-provider")
-    monkeypatch.setenv("AI_API_URL", "https://my.example/v1")
-
-    assert get_available_providers() == ["my-provider"]
-
-
-def test_next_provider_returns_active_provider(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """next_provider возвращает текущий active provider."""
-    from app.core.ai_config import next_provider
-
-    monkeypatch.setenv("AI_PROVIDER", "next-provider")
-    monkeypatch.setenv("AI_API_URL", "https://next.example/v1")
-
-    assert next_provider() == "next-provider"
-
-
-def test_set_active_provider_accepts_valid_name() -> None:
-    """set_active_provider принимает непустую строку без исключений."""
-    from app.core.ai_config import set_active_provider
-
-    set_active_provider("openai")  # не должно бросать
-
-
-def test_set_active_provider_rejects_empty_name() -> None:
-    """set_active_provider выбрасывает ValueError для пустой строки."""
-    from app.core.ai_config import set_active_provider
-
-    with pytest.raises(ValueError, match="Provider"):
-        set_active_provider("   ")
-
-
-def test_set_active_provider_rejects_non_string() -> None:
-    """set_active_provider выбрасывает ValueError для не-строки."""
-    from app.core.ai_config import set_active_provider
-
-    with pytest.raises(ValueError, match="Provider"):
-        set_active_provider(None)  # type: ignore[arg-type]
-
-
-# ---------------------------------------------------------------------------
-# set_model (строки 256-259)
-# ---------------------------------------------------------------------------
-
-def test_set_model_accepts_valid_model_without_guild() -> None:
-    """set_model принимает строку без guild_id без исключений."""
-    from app.core.ai_config import set_model
-
-    set_model("gpt-4")  # не должно бросать
-
-
-def test_set_model_rejects_empty_string() -> None:
-    """set_model выбрасывает ValueError для пустой строки."""
-    from app.core.ai_config import set_model
-
-    with pytest.raises(ValueError, match="Chat model"):
-        set_model("  ")
-
-
-def test_set_model_rejects_guild_id() -> None:
-    """set_model выбрасывает ValueError если передан guild_id."""
-    from app.core.ai_config import set_model
-
-    with pytest.raises(ValueError, match="repository"):
-        set_model("gpt-4", guild_id=42)
 
 
 

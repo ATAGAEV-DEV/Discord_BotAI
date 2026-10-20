@@ -7,7 +7,6 @@ from app.data.models import UserDescription
 
 # Глобальный кэш: {guild_id: {nick: description}}
 _cache: dict[int, dict[str, str]] = {}
-_loaded: bool = False
 
 
 @db_operation("загрузке описаний пользователей")
@@ -16,7 +15,6 @@ async def load_all(session: AsyncSession) -> None:
 
     Вызывается один раз при старте бота (on_ready).
     """
-    global _loaded  # noqa: PLW0603
     result = await session.execute(select(UserDescription))
     rows = result.scalars().all()
 
@@ -24,7 +22,6 @@ async def load_all(session: AsyncSession) -> None:
     for row in rows:
         _cache.setdefault(row.guild_id, {})[row.nick] = row.description
 
-    _loaded = True
     print(f"Кэш описаний загружен: {sum(len(v) for v in _cache.values())} записей")
 
 
@@ -35,17 +32,6 @@ def get(guild_id: int) -> dict[str, str]:
     """
     return dict(_cache.get(guild_id, {}))
 
-
-def get_all() -> dict[str, str]:
-    """Возвращает объединённый словарь описаний со всех серверов.
-
-    Используется как прямая замена старого USER_DESCRIPTIONS.
-    При конфликте ников — побеждает последний по guild_id.
-    """
-    merged: dict[str, str] = {}
-    for guild_descs in _cache.values():
-        merged.update(guild_descs)
-    return merged
 
 
 @db_operation("сохранении описания пользователя")

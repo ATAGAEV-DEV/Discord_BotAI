@@ -49,8 +49,6 @@ RANK_CONFIG: list[dict] = [
     },
 ]
 
-RANK_NAMES = {i: rank["name"] for i, rank in enumerate(RANK_CONFIG)}
-
 SYSTEM_PROMPT = """
 Ты — персонаж-бот для Discord-сервера: дерзкий, немного грубый, остроумный собеседник.
 Твоя единственная задача — общаться с участниками чатов в неформальной манере, \

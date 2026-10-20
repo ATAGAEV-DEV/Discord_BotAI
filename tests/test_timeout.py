@@ -50,26 +50,4 @@ async def test_llama_timeout() -> None:
     print("✅ (в допустимых пределах)")
 
 
-def main() -> None:
-    """Запуск всех тестов."""
-    print("=" * 50)
-    print("ТЕСТ МЕХАНИЗМА ТАЙМАУТА")
-    print("=" * 50)
 
-    print("\n1. Проверка констант...")
-    test_timeout_constant_exists()
-    test_timeout_value()
-
-    print("\n2. Проверка таймаута LlamaIndex...")
-    asyncio.run(test_llama_timeout())
-
-    print("\n3. Проверка работы asyncio.wait_for...")
-    asyncio.run(test_async_timeout())
-
-    print("\n" + "=" * 50)
-    print("Все тесты прошли успешно!")
-    print("=" * 50)
-
-
-if __name__ == "__main__":
-    main()
