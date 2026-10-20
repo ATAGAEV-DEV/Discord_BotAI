@@ -25,11 +25,7 @@ def create_help_embed(prefix: str) -> discord.Embed:
         value=(
             f"`{prefix}help` - показать эту справку\n"
             f"`{prefix}rank` - узнать свой ранг и статистику\n"
-            f"`{prefix}rank list` - показать все возможные ранги\n"
-            f"`{prefix}toxic` - прожарка чата (по умолчанию 20 сообщений)\n"
-            f"`{prefix}toxic [число]` - прожарка указанного количества сообщений\n"
-            f"`{prefix}toxic [образ]` - прожарка в выбранном образе\n"
-            f"`{prefix}toxic list` - показать список доступных образов"
+            f"`{prefix}rank list` - показать все возможные ранги"
         ),
         inline=False,
     )
@@ -69,10 +65,46 @@ def create_help_embed(prefix: str) -> discord.Embed:
     )
 
     embed.add_field(
+        name="🔥 Прожарка чата",
+        value=(
+            f"`{prefix}toxic` - прожарить последние сообщения (по умолчанию 20)\n"
+            f"`{prefix}toxic [число]` - указать количество сообщений\n"
+            f"`{prefix}toxic [образ]` - выбрать образ прожарки\n"
+            f"`{prefix}toxic [число] [образ]` - указать количество и образ\n"
+            f"`{prefix}toxic list` - показать доступные образы"
+        ),
+        inline=False,
+    )
+
+    embed.add_field(
+        name="🌐 Управление AI-провайдерами",
+        value=(
+            f"`{prefix}provider_list` - показать список AI-провайдеров\n"
+            f"`{prefix}provider_add [имя] [url] [токен]` - добавить провайдера\n"
+            f"`{prefix}provider_remove [имя]` - удалить провайдера\n"
+            f"`{prefix}provider_set [chat|embedding] [имя]` - выбрать провайдера\n"
+            "*(только для администраторов)*"
+        ),
+        inline=False,
+    )
+
+    embed.add_field(
+        name="🤖 Управление AI-моделями",
+        value=(
+            f"`{prefix}model_list` - показать список AI-моделей\n"
+            f"`{prefix}model_add [имя]` - добавить модель\n"
+            f"`{prefix}model_remove [имя]` - удалить модель\n"
+            f"`{prefix}model_set [chat|mini|embedding] [имя]` - выбрать модель\n"
+            "*(только для администраторов)*"
+        ),
+        inline=False,
+    )
+
+    embed.add_field(
         name="🛡️ Администрирование",
         value=(
             f"`{prefix}reset` - очистка истории чата\n"
-            f"`{prefix}ai` - переключить/выбрать AI-провайдера\n"
+            f"`{prefix}update_user` - обновить список пользователей сервера\n"
             f"`{prefix}admin_add [имя] [ID]` - добавить администратора бота\n"
             f"`{prefix}admin_remove [ID]` - удалить администратора бота\n"
             f"`{prefix}admin_list` - показать администраторов текущего сервера\n"
