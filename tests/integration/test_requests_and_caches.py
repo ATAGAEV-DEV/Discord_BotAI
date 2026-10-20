@@ -1,4 +1,4 @@
-"""CRUD, PostgreSQL rank(), кэши и декораторы поверх настоящих двух БД."""
+﻿"""CRUD, PostgreSQL rank(), кэши и декораторы поверх реальной БД."""
 
 from types import ModuleType
 
@@ -18,25 +18,23 @@ from tests.integration.conftest import Databases
 
 
 async def test_channel_messages_crud_is_isolated_by_channel(databases: Databases) -> None:
-    """Сообщения записываются в обе БД; удаление не затрагивает другой канал."""
+    """Сообщения записываются в БД; удаление не затрагивает другой канал."""
     await request.save_channel_message(100, 1001, "alice", "Привет 👋")
     await request.save_channel_message(100, 1002, "bob", "Ответ")
     await request.save_channel_message(200, 2001, "alice", "Другой канал")
     assert {row.message_id for row in await request.get_channel_messages(100)} == {1001, 1002}
-    for side in ("local", "remote"):
-        assert {
-            (r.channel_id, r.message_id, r.content)
-            for r in await databases.rows(side, models.ChannelMessage)
-        } == {
-            (100, 1001, "Привет 👋"),
-            (100, 1002, "Ответ"),
-            (200, 2001, "Другой канал"),
-        }
+    assert {
+        (r.channel_id, r.message_id, r.content)
+        for r in await databases.rows(models.ChannelMessage)
+    } == {
+        (100, 1001, "Привет 👋"),
+        (100, 1002, "Ответ"),
+        (200, 2001, "Другой канал"),
+    }
     await request.delete_channel_messages(100)
     assert await request.get_channel_messages(100) == []
-    for side in ("local", "remote"):
-        row, = await databases.rows(side, models.ChannelMessage)
-        assert row.message_id == 2001
+    row, = await databases.rows(models.ChannelMessage)
+    assert row.message_id == 2001
 
 
 async def test_message_counters_are_committed_per_guild(databases: Databases) -> None:
@@ -49,25 +47,22 @@ async def test_message_counters_are_committed_per_guild(databases: Databases) ->
     assert second["message_count"] == 2
     assert await request.get_rank(1, 100) == 2
     assert await request.get_rank(1, 200) == 1
-    for side in ("local", "remote"):
-        assert {
-            (row.user_id, row.guild_id): row.message_count
-            for row in await databases.rows(side, models.UserMessageStats)
-        } == {(1, 100): 2, (1, 200): 1}
+    assert {
+        (row.user_id, row.guild_id): row.message_count
+        for row in await databases.rows(models.UserMessageStats)
+    } == {(1, 100): 2, (1, 200): 1}
 
 
 async def test_postgres_rank_ties_gaps_and_guild_partition(databases: Databases) -> None:
     """Одинаковые счётчики получают rank 1,1,3, а не row_number или dense_rank."""
-    for side in ("local", "remote"):
-        await databases.seed(
-            side,
-            *[
-                models.UserMessageStats(
-                    user_id=user, guild_id=guild, name=str(user), message_count=count
-                )
-                for user, guild, count in [(1, 100, 10), (2, 100, 10), (3, 100, 2), (3, 200, 999)]
-            ],
-        )
+    await databases.seed(
+        *[
+            models.UserMessageStats(
+                user_id=user, guild_id=guild, name=str(user), message_count=count
+            )
+            for user, guild, count in [(1, 100, 10), (2, 100, 10), (3, 100, 2), (3, 200, 999)]
+        ],
+    )
     assert await request.get_user_rank(1, 100) == 1
     assert await request.get_user_rank(2, 100) == 1
     assert await request.get_user_rank(3, 100) == 3
@@ -76,21 +71,20 @@ async def test_postgres_rank_ties_gaps_and_guild_partition(databases: Databases)
     assert await request.get_user_rank(1, 999) == 0
 
 
-async def test_request_descriptions_update_and_delete_both_databases(databases: Databases) -> None:
-    """Повторное сохранение через request обновляет описание в обеих БД."""
+async def test_request_descriptions_update_and_delete(databases: Databases) -> None:
+    """Повторное сохранение через request обновляет описание в БД."""
     assert "добавлено" in await request.save_user_description("alice", "old", 100)
     await request.save_user_description("alice", "other guild", 200)
     assert "обновлено" in await request.save_user_description("alice", "new", 100)
     assert await request.get_user_descriptions(100) == {"alice": "new"}
-    for side in ("local", "remote"):
-        assert {
-            r.guild_id: r.description for r in await databases.rows(side, models.UserDescription)
-        } == {100: "new", 200: "other guild"}
+    assert {
+        r.guild_id: r.description for r in await databases.rows(models.UserDescription)
+    } == {100: "new", 200: "other guild"}
     assert "удалено" in await request.delete_user_description("alice", 100)
     assert "не найдено" in await request.delete_user_description("alice", 100)
-    for side in ("local", "remote"):
-        row, = await databases.rows(side, models.UserDescription)
-        assert row.guild_id == 200
+    row, = await databases.rows(models.UserDescription)
+    assert row.guild_id == 200
+
 
 
 @pytest.mark.parametrize(
@@ -111,16 +105,14 @@ async def test_description_cache_crud_reload_and_copies(
     copy = cache.get(100)
     copy["same"] = "mutated"
     assert cache.get(100) == {"same": "old"}
-    for side in ("local", "remote"):
-        assert {
-            (r.guild_id, getattr(r, key)): r.description for r in await databases.rows(side, model)
-        } == {(100, "same"): "old", (200, "same"): "other guild"}
+    assert {
+        (r.guild_id, getattr(r, key)): r.description for r in await databases.rows(model)
+    } == {(100, "same"): "old", (200, "same"): "other guild"}
     assert "обновлено" in await cache.save("same", "new", 100)
     assert cache.get(100) == {"same": "new"}
-    for side in ("local", "remote"):
-        assert {
-            (r.guild_id, getattr(r, key)): r.description for r in await databases.rows(side, model)
-        } == {(100, "same"): "new", (200, "same"): "other guild"}
+    assert {
+        (r.guild_id, getattr(r, key)): r.description for r in await databases.rows(model)
+    } == {(100, "same"): "new", (200, "same"): "other guild"}
     cache._cache[999] = {"stale": "discard"}
     await cache.load_all()
     assert cache.get(999) == {}
@@ -128,13 +120,12 @@ async def test_description_cache_crud_reload_and_copies(
     assert "удалено" in await cache.remove("same", 100)
     assert "не найдено" in await cache.remove("same", 100)
     assert cache.get(100) == {}
-    for side in ("local", "remote"):
-        row, = await databases.rows(side, model)
-        assert row.guild_id == 200
+    row, = await databases.rows(model)
+    assert row.guild_id == 200
 
 
 async def test_admin_crud_reload_and_server_isolation(databases: Databases) -> None:
-    """Администраторы и их имена согласованы с двумя таблицами и локальным кэшем."""
+    """Администраторы и их имена согласованы с таблицей и локальным кэшем."""
     await admins.add(100, 1, "old")
     await admins.add(200, 1, "other guild")
     await admins.add(100, 1, "new")
@@ -143,10 +134,9 @@ async def test_admin_crud_reload_and_server_isolation(databases: Databases) -> N
     copy = admins.get_all(100)
     copy.clear()
     assert admins.get_all(100) == {1: "new"}
-    for side in ("local", "remote"):
-        assert {
-            (r.guild_id, r.user_id): r.username for r in await databases.rows(side, models.BotAdmin)
-        } == {(100, 1): "new", (200, 1): "other guild"}
+    assert {
+        (r.guild_id, r.user_id): r.username for r in await databases.rows(models.BotAdmin)
+    } == {(100, 1): "new", (200, 1): "other guild"}
     admins._cache[999] = {99: "stale"}
     await admins.load_all()
     assert admins.get_all(999) == {}
@@ -155,9 +145,8 @@ async def test_admin_crud_reload_and_server_isolation(databases: Databases) -> N
     assert "не найден" in await admins.remove(100, 1)
     assert not admins.is_admin(100, 1)
     assert admins.is_admin(200, 1)
-    for side in ("local", "remote"):
-        row, = await databases.rows(side, models.BotAdmin)
-        assert row.guild_id == 200
+    row, = await databases.rows(models.BotAdmin)
+    assert row.guild_id == 200
 
 
 async def test_decorator_wraps_integrity_error_and_releases_connections(
@@ -167,28 +156,26 @@ async def test_decorator_wraps_integrity_error_and_releases_connections(
     with pytest.raises(RuntimeError, match="Ошибка базы данных") as error:
         await request.save_channel_message(100, 1, "alice", None)
     assert isinstance(error.value.__cause__, IntegrityError)
-    assert all(engine.pool.checkedout() == 0 for engine in databases.engines)
-    for side in ("local", "remote"):
-        assert await databases.rows(side, models.ChannelMessage) == []
+    assert databases.engine.pool.checkedout() == 0
+    assert await databases.rows(models.ChannelMessage) == []
     await request.save_channel_message(100, 2, "alice", "recovered")
-    for side in ("local", "remote"):
-        row, = await databases.rows(side, models.ChannelMessage)
-        assert row.message_id == 2
+    row, = await databases.rows(models.ChannelMessage)
+    assert row.message_id == 2
 
 
 async def test_decorator_timeout_closes_cancelled_database_session(
     databases: Databases, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Клиент отменяет один короткий SELECT; серверы и чужие подключения не трогаем."""
+    """Клиент отменяет один короткий SELECT; сервер и чужие подключения не трогаем."""
     monkeypatch.setattr(decorators, "DB_TIMEOUT", 0.05)
 
     @decorators.db_operation("тестовом ожидании")
-    async def slow_query(session: models.DualSessionProxy) -> None:
+    async def slow_query(session: models.AsyncSession) -> None:
         await session.execute(text("SELECT pg_sleep(0.2)"))
 
     with pytest.raises(TimeoutError, match="Таймаут при тестовом ожидании"):
         await slow_query()
-    assert all(engine.pool.checkedout() == 0 for engine in databases.engines)
-    for maker in (databases.local, databases.remote):
-        async with maker() as session:
-            assert await session.scalar(text("SELECT 1")) == 1
+    assert databases.engine.pool.checkedout() == 0
+    async with databases.session_maker() as session:
+        assert await session.scalar(text("SELECT 1")) == 1
+

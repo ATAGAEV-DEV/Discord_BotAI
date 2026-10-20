@@ -1,4 +1,4 @@
-"""Изоляция каждого теста отдельной схемой в каждой из двух тестовых БД."""
+"""Изоляция каждого теста отдельной схемой в тестовой БД."""
 
 from __future__ import annotations
 
@@ -23,21 +23,20 @@ if TYPE_CHECKING:
 
 @dataclass
 class Databases:
-    """Независимые сессии для проверки фактически зафиксированных данных."""
+    """Сессия для проверки фактически зафиксированных данных."""
 
-    local: async_sessionmaker[AsyncSession]
-    remote: async_sessionmaker[AsyncSession]
-    engines: tuple[AsyncEngine, AsyncEngine]
+    session_maker: async_sessionmaker[AsyncSession]
+    engine: AsyncEngine
     schema: str
 
-    async def rows(self, side: str, model: type[models.Base]) -> list[Any]:
-        """Читает таблицу новой сессией, не используя DualSessionProxy."""
-        async with getattr(self, side)() as session:
+    async def rows(self, model: type[models.Base]) -> list[Any]:
+        """Читает таблицу новой сессией."""
+        async with self.session_maker() as session:
             return list((await session.scalars(select(model))).all())
 
-    async def seed(self, side: str, *rows: models.Base) -> None:
-        """Создаёт намеренно независимые данные в одной БД."""
-        async with getattr(self, side)() as session:
+    async def seed(self, *rows: models.Base) -> None:
+        """Создаёт данные в БД."""
+        async with self.session_maker() as session:
             session.add_all(rows)
             await session.commit()
 
@@ -85,11 +84,8 @@ async def databases(
     schema = f"pytest_{uuid4().hex}"
     assert re.fullmatch(r"pytest_[0-9a-f]{32}", schema)
     request.node.user_properties.append(("postgres_schema", schema))
-    engines = (
-        _engine(urls["TEST_DATABASE_URL_LOCAL"], schema),
-        _engine(urls["TEST_DATABASE_URL"], schema),
-    )
-    created: list[AsyncEngine] = []
+    db_engine = _engine(urls["TEST_DATABASE_URL"], schema)
+    created = False
     sessions: list[AsyncSession] = []
     ACTIVE_SCHEMAS.add(schema)
     _reset_caches()
@@ -102,27 +98,21 @@ async def databases(
             sessions.append(self)
 
     try:
-        for engine in engines:
-            async with engine.begin() as conn:
-                assert await conn.scalar(text("SELECT current_database()")) == "test_atagaev"
-                await conn.execute(CreateSchema(schema))
-                # Запоминаем владение до COMMIT: потеря его ответа не должна пропустить cleanup.
-                created.append(engine)
-            async with engine.begin() as conn:
-                assert await conn.scalar(text("SELECT current_schema()")) == schema
-                # DDL на общих серверах иногда занимает больше обычного SELECT/DML.
-                # SET LOCAL действует только до конца setup-транзакции.
-                await conn.execute(text("SET LOCAL statement_timeout = '15s'"))
-                await conn.run_sync(models.Base.metadata.create_all, checkfirst=False)
+        async with db_engine.begin() as conn:
+            assert await conn.scalar(text("SELECT current_database()")) == "test_atagaev"
+            await conn.execute(CreateSchema(schema))
+            created = True
+        async with db_engine.begin() as conn:
+            assert await conn.scalar(text("SELECT current_schema()")) == schema
+            await conn.execute(text("SET LOCAL statement_timeout = '15s'"))
+            await conn.run_sync(models.Base.metadata.create_all, checkfirst=False)
 
-        makers = tuple(async_sessionmaker(e, class_=TrackedSession) for e in engines)
-        monkeypatch.setattr(models, "engine_local", engines[0])
-        monkeypatch.setattr(models, "engine_remote", engines[1])
-        monkeypatch.setattr(models, "async_session_local_maker", makers[0])
-        monkeypatch.setattr(models, "async_session_remote_maker", makers[1])
+        maker = async_sessionmaker(db_engine, class_=TrackedSession)
+        monkeypatch.setattr(models, "engine", db_engine)
+        monkeypatch.setattr(models, "async_session_maker", maker)
         monkeypatch.setattr(models, "SCHEMA", schema)
         monkeypatch.setenv("DATABASE_SCHEMA", schema)
-        yield Databases(makers[0], makers[1], engines, schema)
+        yield Databases(maker, db_engine, schema)
     finally:
         errors: list[Exception] = []
         for session in sessions:
@@ -130,21 +120,20 @@ async def databases(
                 await session.close()
             except Exception as exc:
                 errors.append(exc)
-        for engine in engines:
+        try:
+            if created:
+                async with db_engine.begin() as conn:
+                    await conn.execute(DropSchema(schema, cascade=True, if_exists=True))
+                    assert await conn.scalar(
+                        text("SELECT to_regnamespace(:schema)"), {"schema": schema}
+                    ) is None
+        except Exception as exc:
+            errors.append(exc)
+        finally:
             try:
-                if engine in created:
-                    async with engine.begin() as conn:
-                        await conn.execute(DropSchema(schema, cascade=True, if_exists=True))
-                        assert await conn.scalar(
-                            text("SELECT to_regnamespace(:schema)"), {"schema": schema}
-                        ) is None
+                await db_engine.dispose()
             except Exception as exc:
                 errors.append(exc)
-            finally:
-                try:
-                    await engine.dispose()
-                except Exception as exc:
-                    errors.append(exc)
         ACTIVE_SCHEMAS.discard(schema)
         _reset_caches()
         if errors:

@@ -2,24 +2,20 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.models import AIModel
 
-if TYPE_CHECKING:
-    from app.data.models import DualSessionProxy
 
-
-async def get_all(session: DualSessionProxy) -> list[str]:
+async def get_all(session: AsyncSession) -> list[str]:
     """Возвращает все имена моделей в алфавитном порядке."""
     result = await session.execute(select(AIModel).order_by(AIModel.name))
     return [row.name for row in result.scalars().all()]
 
 
-async def add(session: DualSessionProxy, name: str) -> str:
+async def add(session: AsyncSession, name: str) -> str:
     """Добавляет модель в справочник.
 
     Возвращает сообщение об успехе или о том, что модель уже существует.
@@ -40,14 +36,13 @@ async def add(session: DualSessionProxy, name: str) -> str:
         raise
 
 
-async def remove(session: DualSessionProxy, name: str) -> str:
+async def remove(session: AsyncSession, name: str) -> str:
     """Удаляет модель из справочника.
 
     Возвращает сообщение об успехе или о том, что модель не найдена.
     """
     name = name.strip()
     stmt = delete(AIModel).where(AIModel.name == name)
-    stmt.is_dml = True  # type: ignore[attr-defined]
     result = await session.execute(stmt)
     await session.commit()
     if result.rowcount == 0:
@@ -55,7 +50,8 @@ async def remove(session: DualSessionProxy, name: str) -> str:
     return f"✅ Модель `{name}` удалена."
 
 
-async def exists(session: DualSessionProxy, name: str) -> bool:
+async def exists(session: AsyncSession, name: str) -> bool:
     """Возвращает True если модель с таким именем есть в справочнике."""
     result = await session.execute(select(AIModel).where(AIModel.name == name.strip()))
     return result.scalar_one_or_none() is not None
+

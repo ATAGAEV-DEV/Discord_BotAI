@@ -16,7 +16,7 @@ from app.data.repositories import ai_models
 
 
 def _make_session(rows: list[AIModel] | None = None, *, rowcount: int = 1) -> MagicMock:
-    """Возвращает мок DualSessionProxy."""
+    """Возвращает мок AsyncSession."""
     session = MagicMock()
     session.add = MagicMock()
     session.commit = AsyncMock()

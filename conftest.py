@@ -44,9 +44,8 @@ def pytest_configure(config: pytest.Config) -> None:
                 stacklevel=1,
             )
     else:
-        # Unit-тестам нужны лишь валидные URL при импорте, но не реальные БД.
+        # Unit-тестам нужен лишь валидный URL при импорте, но не реальная БД.
         os.environ["DATABASE_URL"] = "postgresql+asyncpg://unit:unit@127.0.0.1:1/unit"
-        os.environ["DATABASE_URL_LOCAL"] = "postgresql+asyncpg://unit:unit@127.0.0.1:2/unit"
     load_dotenv(override=False)
 
 

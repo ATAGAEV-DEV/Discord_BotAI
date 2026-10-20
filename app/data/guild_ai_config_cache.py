@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Mapping
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import AISettings
 from app.data import models
 from app.data.repositories import guild_ai_config
@@ -42,7 +44,7 @@ def is_loaded() -> bool:
     return _loaded
 
 
-async def load_all(session: models.DualSessionProxy) -> None:
+async def load_all(session: AsyncSession) -> None:
     """Загружает только валидные строки из БД и не создаёт новые записи."""
     global _loaded
     loaded = await guild_ai_config.load_all(session)
@@ -52,7 +54,7 @@ async def load_all(session: models.DualSessionProxy) -> None:
 
 
 async def ensure(
-    session: models.DualSessionProxy,
+    session: AsyncSession,
     guild_id: int,
     environment_settings: AISettings | Mapping[str, str | None] | None = None,
 ) -> AISettings:

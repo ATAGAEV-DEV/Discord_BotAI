@@ -2,24 +2,20 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.models import AIProvider
 
-if TYPE_CHECKING:
-    from app.data.models import DualSessionProxy
 
-
-async def get_all(session: DualSessionProxy) -> list[tuple[str, str]]:
+async def get_all(session: AsyncSession) -> list[tuple[str, str]]:
     """Возвращает все записи (имя, api_url) в алфавитном порядке."""
     result = await session.execute(select(AIProvider).order_by(AIProvider.name))
     return [(row.name, row.api_url) for row in result.scalars().all()]
 
 
-async def add(session: DualSessionProxy, name: str, api_url: str, token: str) -> str:
+async def add(session: AsyncSession, name: str, api_url: str, token: str) -> str:
     """Добавляет провайдера в справочник.
 
     Возвращает сообщение об успехе или о том, что провайдер уже существует.
@@ -46,14 +42,13 @@ async def add(session: DualSessionProxy, name: str, api_url: str, token: str) ->
         raise
 
 
-async def remove(session: DualSessionProxy, name: str) -> str:
+async def remove(session: AsyncSession, name: str) -> str:
     """Удаляет провайдера из справочника.
 
     Возвращает сообщение об успехе или о том, что провайдер не найден.
     """
     name = name.strip()
     stmt = delete(AIProvider).where(AIProvider.name == name)
-    stmt.is_dml = True  # type: ignore[attr-defined]
     result = await session.execute(stmt)
     await session.commit()
     if result.rowcount == 0:
@@ -61,9 +56,10 @@ async def remove(session: DualSessionProxy, name: str) -> str:
     return f"✅ Провайдер `{name}` удалён."
 
 
-async def get(session: DualSessionProxy, name: str) -> AIProvider | None:
+async def get(session: AsyncSession, name: str) -> AIProvider | None:
     """Возвращает запись провайдера по имени или None."""
     result = await session.execute(
         select(AIProvider).where(AIProvider.name == name.strip())
     )
     return result.scalar_one_or_none()
+

@@ -1,4 +1,4 @@
-"""Проверки предохранителей без сетевых подключений и настоящих секретов."""
+﻿"""Проверки предохранителей без сетевых подключений и настоящих секретов."""
 
 import os
 import subprocess
@@ -18,7 +18,6 @@ from tests.postgres_support import (
 )
 
 REMOTE = "postgresql+asyncpg://bot_test:fake@91.205.220.24:5432/test_atagaev"
-LOCAL = "postgresql+asyncpg://bot_test:fake@192.168.0.147:5433/test_atagaev"
 DIALECT = SimpleNamespace(name="postgresql", driver="asyncpg")
 
 
@@ -35,7 +34,6 @@ DIALECT = SimpleNamespace(name="postgresql", driver="asyncpg")
         REMOTE.replace("+asyncpg", ""),
         REMOTE.replace(":fake", ""),
         REMOTE + "?host=another-server",
-        LOCAL,
     ],
 )
 def test_unsafe_urls_are_rejected_without_secrets(value: str | None) -> None:
@@ -47,40 +45,34 @@ def test_unsafe_urls_are_rejected_without_secrets(value: str | None) -> None:
     assert "postgresql" not in str(error.value)
 
 
-def test_environment_overrides_file_and_production_values(tmp_path: Path) -> None:
+def test_environment_overrides_file(tmp_path: Path) -> None:
     """Использует только TEST_*; пустое значение окружения тоже не заменяет файлом."""
     path = tmp_path / "test-settings"
-    path.write_text(f"TEST_DATABASE_URL={REMOTE}\nTEST_DATABASE_URL_LOCAL={LOCAL}\n")
+    path.write_text(f"TEST_DATABASE_URL={REMOTE}\n")
     urls = load_test_urls(path, {"TEST_DATABASE_URL": REMOTE.replace("fake", "override")})
     assert urls["TEST_DATABASE_URL"].password == "override"
-    assert urls["TEST_DATABASE_URL_LOCAL"].host == "192.168.0.147"
     with pytest.raises(ValueError):
         load_test_urls(path, {"TEST_DATABASE_URL": ""})
     with pytest.raises(ValueError):
-        load_test_urls(tmp_path / "absent", {"DATABASE_URL": REMOTE, "DATABASE_URL_LOCAL": LOCAL})
+        load_test_urls(tmp_path / "absent", {"DATABASE_URL": REMOTE})
 
 
 def test_dotenv_does_not_interpolate_passwords(tmp_path: Path) -> None:
     """Спецсимволы пароля не заменяются значениями окружения."""
     path = tmp_path / "test-settings"
-    path.write_text(
-        f"TEST_DATABASE_URL={REMOTE.replace('fake', '${SECRET}')}\nTEST_DATABASE_URL_LOCAL={LOCAL}"
-    )
+    path.write_text(f"TEST_DATABASE_URL={REMOTE.replace('fake', '${SECRET}')}\n")
     assert load_test_urls(path, {})["TEST_DATABASE_URL"].password == "${SECRET}"
 
 
-def test_test_environment_replaces_both_application_urls(
+def test_test_environment_replaces_application_url(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Приложение получает только заранее проверенные адреса до импорта моделей."""
-    for key in ("DATABASE_URL", "DATABASE_URL_LOCAL", "DATABASE_SCHEMA"):
+    for key in ("DATABASE_URL", "DATABASE_SCHEMA"):
         monkeypatch.setenv(key, "production-placeholder")
-    urls = load_test_urls(
-        tmp_path / "absent", {"TEST_DATABASE_URL": REMOTE, "TEST_DATABASE_URL_LOCAL": LOCAL}
-    )
+    urls = load_test_urls(tmp_path / "absent", {"TEST_DATABASE_URL": REMOTE})
     install_test_environment(urls)
     assert os.environ["DATABASE_URL"] == REMOTE
-    assert os.environ["DATABASE_URL_LOCAL"] == LOCAL
     assert os.environ["DATABASE_SCHEMA"] == "pytest_unconfigured"
 
 
@@ -145,7 +137,7 @@ async def test_unit_run_blocks_actual_engine_before_network() -> None:
 def test_pytest_refuses_unsafe_configuration_before_collection(worker: bool) -> None:
     """CLI отказывает до collection: некорректный URL или worker не подключается к БД."""
     root = Path(__file__).resolve().parents[1]
-    environ = dict(os.environ, TEST_DATABASE_URL="invalid-secret", TEST_DATABASE_URL_LOCAL=LOCAL)
+    environ = dict(os.environ, TEST_DATABASE_URL="invalid-secret")
     environ["PYTHONIOENCODING"] = "utf-8"
     if worker:
         environ["PYTEST_XDIST_WORKER"] = "gw0"
@@ -161,3 +153,4 @@ def test_pytest_refuses_unsafe_configuration_before_collection(worker: bool) -> 
     assert "invalid-secret" not in result.stderr
     assert "collected" not in result.stdout
     assert ("последовательно" if worker else "TEST_DATABASE_URL") in result.stderr
+

@@ -16,7 +16,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from app.core.config import POLZA_PROVIDER
-from app.data.models import Base, engine_local, engine_remote
+from app.data.models import Base, engine
 
 
 class GuildAIConfigMigrationError(RuntimeError):
@@ -62,6 +62,7 @@ async def _prepare_schema(connection: AsyncConnection) -> set[str]:
             statement = f"ALTER TABLE guild_ai_configs ADD COLUMN {name} {sql_type}"
         await connection.execute(text(statement))
     return await _table_columns(connection)
+
 
 
 def _secret(
@@ -212,10 +213,9 @@ async def migrate(
     url_mapping: Mapping[int, str] | None = None,
     migration_token: str | None = None,
     migration_url: str | None = None,
-    local: AsyncEngine = engine_local,
-    remote: AsyncEngine = engine_remote,
+    db_engine: AsyncEngine = engine,
 ) -> MigrationResult:
-    """Выполняет один согласованный backfill в обеих PostgreSQL БД.
+    """Выполняет идемпотентный backfill в PostgreSQL БД.
 
     ``migration_token`` и ``migration_url`` должны быть переданы явно. Для
     удобства CLI допускается только отдельная переменная ``AI_EMBEDDING_TOKEN``
@@ -225,50 +225,29 @@ async def migrate(
         migration_token if migration_token is not None else os.getenv("AI_EMBEDDING_TOKEN")
     )
     explicit_url = migration_url if migration_url is not None else os.getenv("AI_EMBEDDING_API_URL")
-    local_connection = await local.connect()
-    remote_connection = await remote.connect()
-    local_transaction = await local_connection.begin()
-    remote_transaction = await remote_connection.begin()
+    connection = await db_engine.connect()
+    transaction = await connection.begin()
     try:
-        await _prepare_schema(local_connection)
-        await _prepare_schema(remote_connection)
-        local_snapshot, local_changed = await _backfill(
-            local_connection,
+        await _prepare_schema(connection)
+        snapshot, changed = await _backfill(
+            connection,
             secret_mapping=secret_mapping,
             url_mapping=url_mapping,
             migration_token=explicit_token,
             migration_url=explicit_url,
         )
-        remote_snapshot, remote_changed = await _backfill(
-            remote_connection,
-            secret_mapping=secret_mapping,
-            url_mapping=url_mapping,
-            migration_token=explicit_token,
-            migration_url=explicit_url,
-        )
-        if local_snapshot != remote_snapshot:
-            raise GuildAIConfigMigrationError("Миграция остановлена: копии БД не совпадают")
-        if local_changed != remote_changed:
-            raise GuildAIConfigMigrationError(
-                "Миграция остановлена: результаты backfill не совпадают"
-            )
-        await _set_not_null(local_connection)
-        await _set_not_null(remote_connection)
-        await local_transaction.commit()
-        await remote_transaction.commit()
+        await _set_not_null(connection)
+        await transaction.commit()
     except GuildAIConfigMigrationError:
-        await local_transaction.rollback()
-        await remote_transaction.rollback()
+        await transaction.rollback()
         raise
     except Exception:
-        await local_transaction.rollback()
-        await remote_transaction.rollback()
+        await transaction.rollback()
         raise GuildAIConfigMigrationError("Миграция AI-конфигурации не выполнена") from None
     finally:
-        await local_connection.close()
-        await remote_connection.close()
+        await connection.close()
 
-    changed_guilds = tuple(sorted(local_changed))
+    changed_guilds = tuple(sorted(changed))
     if changed_guilds:
         from app.core.ai_config import invalidate_embedding_runtime
         from app.data import guild_ai_config_cache
@@ -277,7 +256,8 @@ async def migrate(
             guild_ai_config_cache.invalidate(guild_id)
             invalidate_embedding_runtime(guild_id)
     return MigrationResult(
-        guild_count=len(local_snapshot),
+        guild_count=len(snapshot),
         backfilled_guilds=changed_guilds,
         changed=bool(changed_guilds),
     )
+

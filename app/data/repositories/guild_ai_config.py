@@ -1,19 +1,16 @@
-"""Repository полной AI-конфигурации конкретной Discord-гильдии."""
+﻿"""Repository полной AI-конфигурации конкретной Discord-гильдии."""
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import AISettings, get_ai_settings, validate_ai_settings
 from app.data.models import GuildAIConfig
-
-if TYPE_CHECKING:
-    from app.data.models import DualSessionProxy
 
 
 class GuildAIConfigError(ValueError):
@@ -49,38 +46,26 @@ def _row_to_settings(row: GuildAIConfig) -> AISettings:
         ) from None
 
 
-def _settings_values(settings: AISettings) -> tuple[str | None, ...]:
-    """Возвращает внутреннюю последовательность для сравнения двух копий."""
-    return (
-        settings.provider,
-        settings.api_url,
-        settings.token,
-        settings.chat_model,
-        settings.mini_model,
-        settings.embedding_provider,
-        settings.embedding_api_url,
-        settings.embedding_token,
-        settings.embedding_model,
+async def get(session: AsyncSession, guild_id: int) -> AISettings | None:
+    """Читает и валидирует конфигурацию гильдии из БД."""
+    result = await session.execute(
+        select(GuildAIConfig).where(GuildAIConfig.guild_id == guild_id)
     )
-
-
-async def get(session: DualSessionProxy, guild_id: int) -> AISettings | None:
-    """Читает и валидирует одинаковую конфигурацию из обеих БД."""
-    local = await _read_side(session.local, guild_id)
-    remote = await _read_side(session.remote, guild_id)
-    if local is None and remote is None:
+    row = result.scalar_one_or_none()
+    if row is None:
         return None
-    if local is None or remote is None or _settings_values(local) != _settings_values(remote):
-        raise GuildAIConfigError(f"AI-конфигурация гильдии {guild_id} не согласована в базах данных")
-    return local
+    return _row_to_settings(row)
 
 
-async def load_all(session: DualSessionProxy) -> dict[int, AISettings]:
+async def load_all(session: AsyncSession) -> dict[int, AISettings]:
     """Загружает все сохранённые строки без env fallback."""
     result = await session.execute(select(GuildAIConfig))
     settings_by_guild: dict[int, AISettings] = {}
     for row in result.scalars().all():
-        settings_by_guild[row.guild_id] = _row_to_settings(row)
+        try:
+            settings_by_guild[row.guild_id] = _row_to_settings(row)
+        except GuildAIConfigError:
+            pass
     return settings_by_guild
 
 
@@ -111,59 +96,44 @@ def _coerce_environment_settings(
             value("embedding_api_url", "AI_EMBEDDING_API_URL") or defaults.embedding_api_url
         ),
         embedding_token=value("embedding_token", "AI_EMBEDDING_TOKEN"),
-        embedding_model=(value("embedding_model", "AI_EMBEDDING_MODEL") or defaults.embedding_model),
+        embedding_model=(
+            value("embedding_model", "AI_EMBEDDING_MODEL") or defaults.embedding_model
+        ),
     )
 
 
-async def _read_side(session: object, guild_id: int) -> AISettings | None:
-    """Читает строку из конкретной SQLAlchemy-сессии."""
-    result = await session.execute(select(GuildAIConfig).where(GuildAIConfig.guild_id == guild_id))
-    row = result.scalar_one_or_none()
-    return None if row is None else _row_to_settings(row)
-
-
-async def _read_committed_pair(session: DualSessionProxy, guild_id: int) -> AISettings:
-    """Проверяет наличие одинаковой строки в обеих БД после commit."""
-    local = await _read_side(session.local, guild_id)
-    remote = await _read_side(session.remote, guild_id)
-    if local is None or remote is None or _settings_values(local) != _settings_values(remote):
-        raise GuildAIConfigError(f"AI-конфигурация гильдии {guild_id} не согласована в базах данных")
-    return local
-
-
 async def _ensure_unlocked(
-    session: DualSessionProxy,
+    session: AsyncSession,
     guild_id: int,
     environment_settings: AISettings | Mapping[str, str | None] | None,
 ) -> AISettings:
-    """Выполняет ensure без захвата per-guild lock."""
+    """Возвращает существующую строку или атомарно создаёт полную новую (без lock)."""
     existing = await get(session, guild_id)
     if existing is not None:
         return existing
 
-    try:
-        candidate = _coerce_environment_settings(environment_settings)
-        candidate = validate_ai_settings(candidate)
-    except ValueError as exc:
+    env = _coerce_environment_settings(environment_settings)
+    if not env.embedding_token:
         raise GuildAIConfigError(
-            f"Нельзя создать AI-конфигурацию гильдии {guild_id}: {exc}"
-        ) from None
+            f"Невозможно создать AI-конфигурацию гильдии {guild_id}: "
+            "embedding token не задан в переменных окружения"
+        )
 
-    row = GuildAIConfig(
+    new_row = GuildAIConfig(
         guild_id=guild_id,
-        provider=candidate.provider,
-        api_url=candidate.api_url,
-        token=candidate.token,
-        chat_model=candidate.chat_model,
-        mini_model=candidate.mini_model,
-        embedding_provider=candidate.embedding_provider,
-        embedding_api_url=candidate.embedding_api_url,
-        embedding_token=candidate.embedding_token,
-        embedding_model=candidate.embedding_model,
+        provider=env.provider,
+        api_url=env.api_url,
+        token=env.token,
+        chat_model=env.chat_model,
+        mini_model=env.mini_model,
+        embedding_provider=env.embedding_provider,
+        embedding_api_url=env.embedding_api_url,
+        embedding_token=env.embedding_token,
+        embedding_model=env.embedding_model,
     )
+    session.add(new_row)
     try:
-        session.add(row)
-        await session.commit(atomic=True)
+        await session.commit()
     except IntegrityError:
         await session.rollback()
         winner = await get(session, guild_id)
@@ -178,11 +148,16 @@ async def _ensure_unlocked(
             f"Не удалось сохранить AI-конфигурацию гильдии {guild_id}"
         ) from None
 
-    return await _read_committed_pair(session, guild_id)
+    result = await get(session, guild_id)
+    if result is None:
+        raise GuildAIConfigError(
+            f"Не удалось сохранить AI-конфигурацию гильдии {guild_id}"
+        )
+    return result
 
 
 async def ensure(
-    session: DualSessionProxy,
+    session: AsyncSession,
     guild_id: int,
     environment_settings: AISettings | Mapping[str, str | None] | None = None,
 ) -> AISettings:
@@ -199,7 +174,7 @@ def clear_locks() -> None:
 
 
 async def update_model(
-    session: DualSessionProxy,
+    session: AsyncSession,
     guild_id: int,
     field: str,
     model_name: str,
@@ -219,7 +194,6 @@ async def update_model(
         .where(GuildAIConfig.guild_id == guild_id)
         .values(**{field: model_name})
     )
-    stmt.is_dml = True  # type: ignore[attr-defined]
     result = await session.execute(stmt)
     if result.rowcount == 0:
         raise GuildAIConfigError(f"AI-конфигурация гильдии {guild_id} не найдена")
@@ -230,7 +204,7 @@ async def update_model(
 
 
 async def update_provider(
-    session: DualSessionProxy,
+    session: AsyncSession,
     guild_id: int,
     provider_type: str,
     name: str,
@@ -261,7 +235,6 @@ async def update_provider(
         .where(GuildAIConfig.guild_id == guild_id)
         .values(**values)
     )
-    stmt.is_dml = True  # type: ignore[attr-defined]
     result = await session.execute(stmt)
     if result.rowcount == 0:
         raise GuildAIConfigError(f"AI-конфигурация гильдии {guild_id} не найдена")

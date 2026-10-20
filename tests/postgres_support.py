@@ -12,7 +12,6 @@ from sqlalchemy.exc import ArgumentError
 
 ENDPOINTS = {
     "TEST_DATABASE_URL": ("91.205.220.24", 5432),
-    "TEST_DATABASE_URL_LOCAL": ("192.168.0.147", 5433),
 }
 ACTIVE_SCHEMAS: set[str] = set()
 
@@ -44,8 +43,6 @@ def load_test_urls(path: Path, environ: Mapping[str, str]) -> dict[str, URL]:
         key: validate_test_url(environ[key] if key in environ else values.get(key), key)
         for key in ENDPOINTS
     }
-    if urls["TEST_DATABASE_URL"] == urls["TEST_DATABASE_URL_LOCAL"]:
-        raise ValueError("Тестовые подключения должны отличаться")
     return urls
 
 
