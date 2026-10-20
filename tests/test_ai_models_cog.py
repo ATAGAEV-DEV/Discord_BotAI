@@ -10,7 +10,6 @@ from app.cogs.ai_models import AIModels
 from app.core.bot import DisBot
 from app.data.repositories.guild_ai_config import GuildAIConfigError
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -37,7 +36,7 @@ def _make_ctx(guild_id: int = 123) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_setup_registers_cog() -> None:
-    """setup регистрирует AIModels с ботом."""
+    """Setup регистрирует AIModels с ботом."""
     from app.cogs import ai_models as ai_models_module
 
     bot = _make_bot()

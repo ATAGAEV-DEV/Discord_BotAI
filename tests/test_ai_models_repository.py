@@ -10,7 +10,6 @@ import pytest
 from app.data.models import AIModel
 from app.data.repositories import ai_models
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -67,7 +66,7 @@ async def test_get_all_empty() -> None:
 
 @pytest.mark.asyncio
 async def test_add_success() -> None:
-    """add возвращает сообщение об успехе и делает commit."""
+    """Add возвращает сообщение об успехе и делает commit."""
     session = _make_session()
     msg = await ai_models.add(session, "new-model")
     assert "new-model" in msg
@@ -77,7 +76,7 @@ async def test_add_success() -> None:
 
 @pytest.mark.asyncio
 async def test_add_empty_name() -> None:
-    """add отклоняет пустое имя без обращения к БД."""
+    """Add отклоняет пустое имя без обращения к БД."""
     session = _make_session()
     msg = await ai_models.add(session, "   ")
     assert "❌" in msg
@@ -86,7 +85,7 @@ async def test_add_empty_name() -> None:
 
 @pytest.mark.asyncio
 async def test_add_duplicate_returns_warning() -> None:
-    """add возвращает предупреждение при IntegrityError и делает rollback."""
+    """Add возвращает предупреждение при IntegrityError и делает rollback."""
     from sqlalchemy.exc import IntegrityError
 
     session = _make_session()
@@ -104,7 +103,7 @@ async def test_add_duplicate_returns_warning() -> None:
 
 @pytest.mark.asyncio
 async def test_remove_existing() -> None:
-    """remove возвращает сообщение об успехе когда rowcount=1."""
+    """Remove возвращает сообщение об успехе когда rowcount=1."""
     session = _make_session(rowcount=1)
     msg = await ai_models.remove(session, "old-model")
     assert "✅" in msg
@@ -114,7 +113,7 @@ async def test_remove_existing() -> None:
 
 @pytest.mark.asyncio
 async def test_remove_not_found() -> None:
-    """remove возвращает предупреждение когда rowcount=0."""
+    """Remove возвращает предупреждение когда rowcount=0."""
     session = _make_session(rowcount=0)
     msg = await ai_models.remove(session, "ghost-model")
     assert "⚠️" in msg
@@ -128,14 +127,14 @@ async def test_remove_not_found() -> None:
 
 @pytest.mark.asyncio
 async def test_exists_true() -> None:
-    """exists возвращает True когда модель найдена."""
+    """Exists возвращает True когда модель найдена."""
     session = _make_session([_model("some-model")])
     assert await ai_models.exists(session, "some-model") is True
 
 
 @pytest.mark.asyncio
 async def test_exists_false() -> None:
-    """exists возвращает False когда модель не найдена."""
+    """Exists возвращает False когда модель не найдена."""
     session = _make_session([])
     assert await ai_models.exists(session, "missing") is False
 
