@@ -5,6 +5,7 @@ from typing import Any
 import feedparser
 import pytz
 from sqlalchemy import select, update
+from sqlalchemy.exc import MultipleResultsFound
 
 from app.core import config
 from app.data.models import YouTubeChannel, YouTubeVideo, async_session
@@ -126,6 +127,9 @@ class YouTubeNotifier:
                 )
                 await session.commit()
                 return True
+        except MultipleResultsFound:
+            print(f"Неоднозначное имя YouTube канала: {name}")
+            return None
         except Exception as e:
             print(f"Ошибка при переключении YouTube канала: {e}")
             return False
