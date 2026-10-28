@@ -180,7 +180,7 @@ def validate_ai_settings(
 class DatabaseSettings:
     """Настройки схемы PostgreSQL."""
 
-    schema: str = "discord"
+    schema: str = "public"
 
     @classmethod
     def from_env(cls) -> "DatabaseSettings":
