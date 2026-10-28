@@ -1,11 +1,24 @@
 """Тесты запуска Discord-бота."""
 
+import runpy
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 import main as bot_main
 from app.core import config
+
+
+def test_entrypoint_reports_missing_token(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Запуск через точку входа сообщает об отсутствии DC_TOKEN и завершается."""
+    monkeypatch.delenv("DC_TOKEN", raising=False)
+
+    runpy.run_path(str(Path(__file__).parents[1] / "main.py"), run_name="__main__")
+
+    assert "DC_TOKEN не найден" in capsys.readouterr().out
 
 
 @patch("main.DisBot")
