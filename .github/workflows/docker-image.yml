@@ -32,15 +32,11 @@ jobs:
             --dns 8.8.8.8 \
             --dns 1.1.1.1 \
             -v chroma_data:/python-app/chroma_db \
-            -e WEATHER_API="${{ secrets.WEATHER_API }}" \
             -e DC_TOKEN="${{ secrets.DC_TOKEN }}" \
-            -e SEARCH_API="${{ secrets.SEARCH_API }}" \
             -e AI_TOKEN="${{ secrets.AI_TOKEN }}" \
             -e AI_EMBEDDING_TOKEN="${{ secrets.AI_EMBEDDING_TOKEN }}" \
             -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-            -e TELEGRAM_BOT_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN }}" \
-            -e TELEGRAM_CHAT_ID="${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -e YOUTUBE_API_KEY="${{ secrets.YOUTUBE_API_KEY }}" \
+            -e DATABASE_SCHEMA="discord" \
             discordchatbot:latest
 
       # Шаг 5: Очистка старых "повисших" образов, чтобы не забивать память
