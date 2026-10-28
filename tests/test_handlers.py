@@ -359,9 +359,9 @@ async def test_ai_generate_isolates_descriptions_in_both_system_messages(
         patch("app.core.handlers.get_model", return_value="test-model"),
         patch("app.core.handlers.asyncio.create_task") as mock_create_task,
         patch(
-            "app.core.handlers.user_descriptions_cache.get_all",
-            side_effect=AssertionError("AI не должен читать описания со всех серверов"),
-        ),
+            "app.core.handlers.user_descriptions_cache.get",
+            wraps=user_descriptions_cache.get,
+        ) as mock_get_descriptions,
     ):
         mock_llama.query_relevant_context = AsyncMock(return_value=contexts)
         mock_llama.index_messages = AsyncMock()
@@ -407,6 +407,11 @@ async def test_ai_generate_isolates_descriptions_in_both_system_messages(
     assert "Empty:" not in all_system_content
     assert "Blank:" not in all_system_content
     assert user_descriptions_cache._cache == original_cache
+    if server_id is None:
+        mock_get_descriptions.assert_not_called()
+    else:
+        assert mock_get_descriptions.call_count >= 1
+        assert all(call.args == (server_id,) for call in mock_get_descriptions.call_args_list)
     assert messages[-1]["content"] == "[Пользователь: Alice] Как дела?"
 
 
