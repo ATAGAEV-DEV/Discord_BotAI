@@ -15,11 +15,11 @@ from app.core.config import (
 )
 
 
-def test_database_schema_defaults_to_discord(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Если переменная не задана, используется прежняя схема discord."""
+def test_database_schema_defaults_to_public(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Если переменная не задана, используется схема public."""
     monkeypatch.delenv("DATABASE_SCHEMA", raising=False)
 
-    assert get_database_settings() == DatabaseSettings(schema="discord")
+    assert get_database_settings() == DatabaseSettings(schema="public")
 
 
 def test_database_schema_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
