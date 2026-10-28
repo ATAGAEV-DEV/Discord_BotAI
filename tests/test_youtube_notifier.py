@@ -12,6 +12,7 @@ from urllib.error import URLError
 import pytest
 import pytz
 from sqlalchemy import select, update
+from sqlalchemy.exc import MultipleResultsFound
 
 from app.core import config
 from app.data.models import YouTubeChannel, YouTubeVideo
@@ -510,6 +511,22 @@ async def test_toggle_channel_returns_none_for_missing_channel(
     result = await YouTubeNotifier(MagicMock()).toggle_channel("Missing", 100, True)
 
     assert result is None
+    database_session.commit.assert_not_awaited()
+    assert database_session.context_exited is True
+
+
+@pytest.mark.asyncio
+async def test_toggle_channel_returns_none_for_ambiguous_name(
+    database_session: MagicMock,
+) -> None:
+    """Неоднозначное имя YouTube-канала не выбирается произвольно."""
+    result = _scalar_result(None)
+    result.scalar_one_or_none.side_effect = MultipleResultsFound()
+    database_session.execute.return_value = result
+
+    value = await YouTubeNotifier(MagicMock()).toggle_channel("Duplicate", 100, False)
+
+    assert value is None
     database_session.commit.assert_not_awaited()
     assert database_session.context_exited is True
 
