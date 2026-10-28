@@ -148,9 +148,11 @@ async def test_daily_report_reads_database_and_only_cleans_up_after_sending(
     )
     monkeypatch.setattr(
         daily_report, "get_client",
-        lambda: SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create))),
+        lambda guild_id: SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+        ),
     )
-    monkeypatch.setattr(daily_report, "get_mini_model", lambda: "test-model")
+    monkeypatch.setattr(daily_report, "get_mini_model", lambda guild_id: "test-model")
     await generator.add_message(100, "Привет", "alice", 1001)
     await generator.add_message(100, "Ответ", "bob", 1002)
     await generator.add_message(200, "Чужой канал", "charlie", 2001)
