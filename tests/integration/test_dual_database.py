@@ -27,7 +27,6 @@ async def test_schema_is_empty_and_connections_are_isolated(databases: Databases
 async def test_bigint_jsonb_and_server_defaults_round_trip(databases: Databases) -> None:
     """Snowflake, вложенный JSONB, Unicode и серверные даты сохраняются."""
     snowflake = 9223372036854775000
-    context = {"dialog": [{"text": "Привет 👋", "ok": True}], "empty": None}
     async with models.async_session() as session:
         session.add(models.UserMessageStats(user_id=snowflake, guild_id=100, name="Тест"))
         await session.commit()

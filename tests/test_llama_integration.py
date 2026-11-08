@@ -621,18 +621,21 @@ def test_get_embedding_model_returns_none_for_none_server_id(
     manager: LlamaIndexManager,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """_get_embedding_model для server_id=None не проверяет is_loaded и вызывает get_embedding_model."""
+    """_get_embedding_model для server_id=None не проверяет is_loaded.
+
+    Вызывает get_embedding_model.
+    """
     from app.data import guild_ai_config_cache
 
     monkeypatch.setattr(guild_ai_config_cache, "is_loaded", lambda: False)
 
     # С server_id=None условие не срабатывает, вызывается get_embedding_model(None)
     # Но он тоже вернёт ошибку. Проверяем что is_loaded не влияет на None server_id.
-    result = manager._get_embedding_model(server_id=None)
+    manager._get_embedding_model(server_id=None)
     # Возвращает результат get_embedding_model(None) — может быть None или AIConfigurationError
     # Главное что ветка 76-77 не сработала (она только для server_id is not None)
     # Если нет кэша, get_embedding_model вернёт ошибку — это ОК для этого теста
-    assert result is None or True  # принимаем любой результат без краша is_loaded
+    assert True  # принимаем любой результат без краша is_loaded
 
 
 # ---------------------------------------------------------------------------
@@ -653,7 +656,7 @@ async def test_index_messages_passes_embed_model_when_available(
     manager._get_embedding_model = MagicMock(return_value=fake_embed_model)
 
     index = MagicMock()
-    document_factory, vector_store, storage_context, index_type = _patch_index_components(
+    _document_factory, _vector_store, _storage_context, _index_type = _patch_index_components(
         monkeypatch, index=index
     )
     collection = MagicMock()
@@ -700,7 +703,7 @@ async def test_query_relevant_context_passes_embed_model_when_available(
     monkeypatch.setattr(llama_integration.asyncio, "to_thread", to_thread)
     manager.get_server_collection = MagicMock(return_value=MagicMock())
 
-    result = await manager.query_relevant_context(123, "запрос")
+    await manager.query_relevant_context(123, "запрос")
 
 
 
@@ -720,7 +723,7 @@ async def test_index_server_users_passes_embed_model_when_available(
     fake_index = MagicMock()
     captured_kwargs: dict = {}
 
-    def _fake_from_documents(docs, **kwargs):
+    def _fake_from_documents(docs: object, **kwargs: object) -> object:
         captured_kwargs.update(kwargs)
         return fake_index
 

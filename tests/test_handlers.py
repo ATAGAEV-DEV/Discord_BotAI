@@ -580,8 +580,9 @@ async def test_ai_generate_repairs_cached_emoji_before_indexing(marker: str) -> 
 @pytest.mark.asyncio
 async def test_ai_generate_returns_timeout_message_on_timeout() -> None:
     """ai_generate возвращает сообщение о таймауте при asyncio.TimeoutError."""
+    from typing import Any
 
-    def _wait_for_raising(coro, timeout):
+    def _wait_for_raising(coro: Any, timeout: float) -> None:
         # Закрываем coroutine явно, чтобы не получить RuntimeWarning
         # "coroutine was never awaited" от GC между тестами.
         coro.close()
@@ -698,7 +699,10 @@ async def test_ai_generate_keeps_recent_history_separate_from_archive(
     )
     monkeypatch.setattr(emoji_descriptions_cache, "_cache", {123: {"Laugh": "серверный смех"}})
     history = ChannelHistory()
-    history.add_pair({"role": "user", "content": "Привет"}, {"role": "assistant", "content": "Здравствуй"})
+    history.add_pair(
+        {"role": "user", "content": "Привет"},
+        {"role": "assistant", "content": "Здравствуй"},
+    )
     completion = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="Ответ"))])
 
     with (
@@ -715,7 +719,14 @@ async def test_ai_generate_keeps_recent_history_separate_from_archive(
         mock_create_task.side_effect = lambda coroutine: coroutine.close()
         mock_create = AsyncMock(return_value=completion)
         mock_get_client.return_value.chat.completions.create = mock_create
-        await ai_generate("Как дела, <@5>?", 123, "Alice", emoji_ids={"Laugh": "1"}, mentions={5: "Bob"}, channel_id=9)
+        await ai_generate(
+            "Как дела, <@5>?",
+            123,
+            "Alice",
+            emoji_ids={"Laugh": "1"},
+            mentions={5: "Bob"},
+            channel_id=9,
+        )
 
     messages = mock_create.await_args.kwargs["messages"]
     assert [message["role"] for message in messages] == ["system", "user", "assistant", "user"]

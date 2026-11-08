@@ -296,7 +296,7 @@ def test_invalidate_embedding_client_removes_matching_keys() -> None:
     invalidate_embedding_client(None)
 
     assert len(ai_config_module._embedding_clients) == 1
-    remaining_key = list(ai_config_module._embedding_clients.keys())[0]
+    remaining_key = next(iter(ai_config_module._embedding_clients.keys()))
     assert remaining_key[0] == 100
 
 
@@ -327,7 +327,7 @@ def test_get_embedding_model_evicts_old_key_for_same_guild(
 
     try:
         get_embedding_model(50, settings=settings_new)
-    except Exception:
+    except Exception:  # noqa: S110
         pass  # OpenAIEmbedding может упасть — важно что старый ключ удалён
 
     assert old_key not in ai_config_module._embedding_models
