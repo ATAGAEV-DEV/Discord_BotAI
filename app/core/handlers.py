@@ -12,7 +12,6 @@ from app.core.config import AI_GENERATE_TIMEOUT
 from app.data import user_descriptions_cache
 from app.services.llama_integration import LlamaIndexManager
 from app.tools.utils import (
-    count_tokens,
     enrich_users_context,
     replace_emojis,
     resolve_user_mentions,
