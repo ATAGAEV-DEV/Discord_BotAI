@@ -17,7 +17,7 @@ REPORT_MSG_LIMIT: int = 15  # Порог сообщений для создан�
 REPORT_TIME_LIMIT: int = 60  # Время ожидания в минутах для создания отчёта
 
 # RAG и краткосрочная память канала
-CONTEXT_LIMIT: int = 100  # Количество строк контекста для RAG
+CONTEXT_LIMIT: int = 50  # Количество строк контекста для RAG
 RAG_MIN_RELEVANCE_SCORE: float = 0.20  # Минимальный score для включения фрагмента в контекст
 CONVERSATION_MAX_PAIRS: int = 20  # Максимальное число пар (user, assistant) в памяти канала
 
