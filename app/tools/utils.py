@@ -1,12 +1,9 @@
 import re
 
 import discord
-import tiktoken
 
 from app.data import emoji_descriptions_cache, user_descriptions_cache
 from app.tools.prompt import EMOJI_PROMPT, RANK_CONFIG, SYSTEM_PROMPT
-
-ENCODING = tiktoken.encoding_for_model("gpt-4o-mini")
 
 _EMOJI_TAG_RE = re.compile(r"\[e:(\w+)\]")
 _MALFORMED_EMOJI_RE = re.compile(
@@ -161,13 +158,6 @@ def darken_color(rgb: tuple, factor: float = 0.75) -> tuple:
     factor < 1 = темнее, factor > 1 = светлее.
     """
     return tuple(max(0, min(255, int(c * factor))) for c in rgb)
-
-
-def count_tokens(text: str | None) -> int:
-    """Подсчитывает количество токенов в тексте с использованием кодировки GPT-4o-mini."""
-    if not isinstance(text, str):
-        text = str(text) if text else ""
-    return len(ENCODING.encode(text))
 
 
 def strip_emoji(text: str) -> str:
