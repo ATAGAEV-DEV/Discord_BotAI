@@ -142,7 +142,6 @@ async def test_ai_generate_processes_context_and_response() -> None:
             return_value="clean answer 😀",
         ) as mock_replace_emojis,
         patch("app.core.handlers.strip_emoji", return_value="indexed answer") as mock_strip,
-        patch("app.core.handlers.count_tokens", return_value=7) as mock_count_tokens,
         patch("app.core.handlers.asyncio.create_task") as mock_create_task,
     ):
         mock_llama.query_relevant_context = AsyncMock(return_value=["raw context"])
@@ -178,7 +177,6 @@ async def test_ai_generate_processes_context_and_response() -> None:
     mock_remove_markdown.assert_called_once_with("raw **answer**")
     mock_replace_emojis.assert_called_once_with("clean answer", {"smile": "100"})
     mock_strip.assert_called_once_with("clean answer 😀")
-    mock_count_tokens.assert_called_once()
     mock_llama.index_messages.assert_called_once_with(
         12345,
         [
@@ -551,7 +549,6 @@ async def test_ai_generate_repairs_cached_emoji_before_indexing(marker: str) -> 
         patch("app.core.handlers.user_descriptions_cache.get", return_value={}),
         patch("app.core.handlers.get_client") as mock_get_client,
         patch("app.core.handlers.get_model", return_value="test-model"),
-        patch("app.core.handlers.count_tokens", return_value=7),
         patch("app.core.handlers.asyncio.create_task") as mock_create_task,
     ):
         mock_llama.query_relevant_context = AsyncMock(return_value=[])
@@ -628,7 +625,6 @@ async def test_ai_generate_converts_assistant_history_message() -> None:
         patch("app.core.handlers.user_descriptions_cache.get", return_value={}),
         patch("app.core.handlers.get_client") as mock_get_client,
         patch("app.core.handlers.get_model", return_value="m"),
-        patch("app.core.handlers.count_tokens", return_value=5),
         patch("app.core.handlers.asyncio.create_task") as mock_create_task,
     ):
         mock_llama.get_channel_history.return_value = history
@@ -669,7 +665,6 @@ async def test_ai_generate_saves_pair_in_channel_history() -> None:
         patch("app.core.handlers.user_descriptions_cache.get", return_value={}),
         patch("app.core.handlers.get_client") as mock_get_client,
         patch("app.core.handlers.get_model", return_value="m"),
-        patch("app.core.handlers.count_tokens", return_value=5),
         patch("app.core.handlers.asyncio.create_task") as mock_create_task,
     ):
         history = ChannelHistory(max_pairs=5)
