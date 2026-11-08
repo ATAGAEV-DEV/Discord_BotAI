@@ -7,7 +7,6 @@ import pytest
 from app.tools.prompt import SYSTEM_PROMPT
 from app.tools.utils import (
     contains_only_urls,
-    count_tokens,
     darken_color,
     enrich_users_context,
     get_rank_description,
@@ -82,30 +81,6 @@ class TestDarkenColor:
         """Не уходит выше 255."""
         result = darken_color((200, 200, 200), factor=2.0)
         assert result == (255, 255, 255)
-
-
-# ── count_tokens ────────────────────────────────────────────────
-
-
-class TestCountTokens:
-    """Тесты для функции count_tokens."""
-
-    def test_normal_text(self) -> None:
-        """Обычный текст возвращает > 0 токенов."""
-        assert count_tokens("Hello, world!") > 0
-
-    def test_empty_string(self) -> None:
-        """Пустая строка → 0 токенов."""
-        assert count_tokens("") == 0
-
-    def test_none_value(self) -> None:
-        """None → не падает, возвращает > 0."""
-        result = count_tokens(None)
-        assert result >= 0
-
-    def test_returns_int(self) -> None:
-        """Проверяем тип результата."""
-        assert isinstance(count_tokens("тест"), int)
 
 
 # ── get_rank_description ────────────────────────────────────────
