@@ -170,7 +170,7 @@ def test_command_prefix_defaults_to_exclamation() -> None:
 
 def test_bot_limits_defaults() -> None:
     """Лимиты при запуске сохраняют прежние значения."""
-    assert config.CONTEXT_LIMIT == 100
+    assert config.CONTEXT_LIMIT == 50
     assert config.REPORT_MSG_LIMIT == 15
     assert config.REPORT_TIME_LIMIT == 60
 
