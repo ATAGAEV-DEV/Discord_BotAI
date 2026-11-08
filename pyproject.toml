@@ -19,7 +19,6 @@ dependencies = [
     "python-dotenv~=1.1.1",
     "pytz~=2025.2",
     "sqlalchemy~=2.0.42",
-    "tiktoken~=0.9.0",
     "griffe>=2.0.0",
 ]
 
