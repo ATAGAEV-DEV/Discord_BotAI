@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 import discord
 from discord.ext import commands
 
@@ -22,6 +24,13 @@ async def initialize_guild_ai_configs(guilds: list[discord.Guild]) -> None:
         await guild_ai_config_cache.load_all(session)
         for guild in guilds:
             await guild_ai_config_cache.ensure(session, guild.id)
+
+
+async def initialize_channel_histories(guilds: Sequence[discord.Guild]) -> None:
+    """Восстанавливает краткосрочную историю в общем менеджере генерации ответов."""
+    from app.core.handlers import llama_manager
+
+    await llama_manager.load_channel_histories([guild.id for guild in guilds])
 
 
 class DisBot(commands.Bot):
@@ -68,6 +77,7 @@ class DisBot(commands.Bot):
         """Инициализация при подключении бота к Discord."""
         await init_models()
         await initialize_guild_ai_configs(self.guilds)
+        await initialize_channel_histories(self.guilds)
         await admins.load_all()
         await user_descriptions_cache.load_all()
         await emoji_descriptions_cache.load_all()
