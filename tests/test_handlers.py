@@ -1,5 +1,6 @@
 """Unit-тесты для app/core/handlers.py."""
 
+from collections.abc import Iterator
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -11,8 +12,9 @@ from app.data import guild_ai_config_cache
 
 
 @pytest.fixture(autouse=True)
-def _guild_ai_settings() -> None:
+def _guild_ai_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Подготавливает полную guild-конфигурацию для unit AI-вызовов."""
+    monkeypatch.setattr("app.core.handlers.conversation_history.save_pair", AsyncMock())
     guild_ai_config_cache._cache.update(
         {
             guild_id: AISettings(
@@ -628,7 +630,7 @@ async def test_ai_generate_converts_assistant_history_message() -> None:
         patch("app.core.handlers.get_model", return_value="m"),
         patch("app.core.handlers.asyncio.create_task") as mock_create_task,
     ):
-        mock_llama.get_channel_history.return_value = history
+        mock_llama.ensure_channel_history = AsyncMock(return_value=history)
         mock_llama.query_relevant_context = AsyncMock(return_value=[])
         mock_llama.index_messages = AsyncMock()
         mock_create_task.side_effect = lambda coroutine: coroutine.close()
@@ -669,7 +671,7 @@ async def test_ai_generate_saves_pair_in_channel_history() -> None:
         patch("app.core.handlers.asyncio.create_task") as mock_create_task,
     ):
         history = ChannelHistory(max_pairs=5)
-        mock_llama.get_channel_history.return_value = history
+        mock_llama.ensure_channel_history = AsyncMock(return_value=history)
         mock_llama.query_relevant_context = AsyncMock(return_value=[])
         mock_llama.index_messages = AsyncMock()
         mock_create_task.side_effect = lambda coroutine: coroutine.close()
@@ -711,7 +713,7 @@ async def test_ai_generate_keeps_recent_history_separate_from_archive(
         patch("app.core.handlers.get_model", return_value="test-model"),
         patch("app.core.handlers.asyncio.create_task") as mock_create_task,
     ):
-        mock_llama.get_channel_history.return_value = history
+        mock_llama.ensure_channel_history = AsyncMock(return_value=history)
         mock_llama.query_relevant_context = AsyncMock(
             return_value=["Список пользователей сервера: Alice, Bob", "старый разговор"]
         )
