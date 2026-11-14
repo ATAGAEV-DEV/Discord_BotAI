@@ -10,6 +10,7 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 from app.core.ai_config import get_embedding_model
 from app.core.config import CONVERSATION_MAX_PAIRS, RAG_MIN_RELEVANCE_SCORE
 from app.data import guild_ai_config_cache
+from app.data.repositories import conversation_history
 
 QUERY_TIMEOUT = 30.0
 INDEX_TIMEOUT = 25.0
@@ -28,6 +29,8 @@ class ChannelHistory:
         self.max_pairs = max_pairs
         # maxlen = max_pairs * 2, т.к. каждая пара = 2 сообщения
         self._messages: deque[dict[str, str]] = deque(maxlen=max_pairs * 2)
+        # Запись в БД и добавление в кэш должны сохранять одинаковый порядок пар.
+        self.write_lock = asyncio.Lock()
 
     def add_pair(self, user_msg: dict[str, str], assistant_msg: dict[str, str]) -> None:
         """Добавляет пару (user, assistant) в буфер."""
@@ -62,6 +65,8 @@ class LlamaIndexManager:
         self._channel_histories: dict[int, ChannelHistory] = {}
         # маппинг channel_id → server_id для очистки по серверу
         self._channel_server_map: dict[int, int] = {}
+        self._loaded_history_servers: set[int] = set()
+        self._history_load_lock = asyncio.Lock()
 
     def _get_embedding_model(self, server_id: int | None) -> OpenAIEmbedding | None:
         """Возвращает embedding model конкретной гильдии после bootstrap.
@@ -97,6 +102,40 @@ class LlamaIndexManager:
             self._channel_server_map[channel_id] = server_id
 
         return history
+
+    async def ensure_channel_history(
+        self, channel_id: int, server_id: int | None = None
+    ) -> ChannelHistory:
+        """Возвращает историю только после восстановления каналов сервера из БД."""
+        if server_id is not None:
+            await self.load_channel_histories([server_id])
+        return self.get_channel_history(channel_id, server_id)
+
+    async def load_channel_histories(self, server_ids: list[int]) -> None:
+        """Восстанавливает последние пары каналов, не перезагружая живой кэш."""
+        async with self._history_load_lock:
+            pending = sorted(set(server_ids) - self._loaded_history_servers)
+            if not pending:
+                return
+
+            pairs = await conversation_history.load_recent(pending)
+            histories: dict[int, ChannelHistory] = {}
+            server_map: dict[int, int] = {}
+            for pair in pairs:
+                history = histories.get(pair.channel_id)
+                if history is None:
+                    history = ChannelHistory()
+                    histories[pair.channel_id] = history
+                history.add_pair(
+                    {"role": "user", "content": pair.user_content},
+                    {"role": "assistant", "content": pair.assistant_content},
+                )
+                server_map[pair.channel_id] = pair.guild_id
+
+            # Публикуем только полностью загруженную историю, без промежуточных await.
+            self._channel_histories.update(histories)
+            self._channel_server_map.update(server_map)
+            self._loaded_history_servers.update(pending)
 
     def clear_channel_history(self, channel_id: int) -> None:
         """Явно сбрасывает историю одного канала."""
