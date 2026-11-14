@@ -10,7 +10,8 @@ from openai.types.chat import (
 from app.core.ai_config import get_client, get_model
 from app.core.config import AI_GENERATE_TIMEOUT
 from app.data import user_descriptions_cache
-from app.services.llama_integration import LlamaIndexManager
+from app.data.repositories import conversation_history
+from app.services.llama_integration import ChannelHistory, LlamaIndexManager
 from app.tools.utils import (
     enrich_users_context,
     replace_emojis,
@@ -81,10 +82,12 @@ async def ai_generate(
     """Генерирует ответ с контекстом упомянутых аккаунтов и глобальным таймаутом.
 
     ``channel_id`` используется для хранения краткосрочной памяти канала
-    (последние 10 пар user/assistant). Если не передан — история не ведётся.
+    (до CONVERSATION_MAX_PAIRS пар user/assistant). Если не передан — история не ведётся.
     """
 
-    async def _generate_inner() -> str:
+    async def _generate_inner() -> tuple[
+        str, ChannelHistory | None, dict[str, str], dict[str, str]
+    ]:
         """Внутренняя функция генерации (без таймаута)."""
         resolved_text, mentioned_names = resolve_user_mentions(text, mentions)
 
@@ -97,7 +100,7 @@ async def ai_generate(
 
         # --- 2. Краткосрочная история канала ---
         history = (
-            llama_manager.get_channel_history(channel_id, server_id)
+            await llama_manager.ensure_channel_history(channel_id, server_id)
             if channel_id is not None
             else None
         )
@@ -186,22 +189,34 @@ async def ai_generate(
             "content": strip_emoji(cleaned_response_text),
         }
 
-        # --- 7. Сохраняем пару в краткосрочную историю ---
-        if history is not None:
-            history.add_pair(user_msg, assistant_msg)
-
-        # --- 8. Индексируем пару в ChromaDB (долгосрочная память) ---
-        asyncio.create_task(llama_manager.index_messages(server_id, [user_msg, assistant_msg]))
-
         for message in messages:
             print(f"----- {message['role']} -----")
             print(message["content"])
             print()
         print(f"Ответ от ИИ: {response_text}")
-        return cleaned_response_text
+        return cleaned_response_text, history, user_msg, assistant_msg
 
     try:
-        return await asyncio.wait_for(_generate_inner(), timeout=AI_GENERATE_TIMEOUT)
+        response, history, user_msg, assistant_msg = await asyncio.wait_for(
+            _generate_inner(), timeout=AI_GENERATE_TIMEOUT
+        )
     except TimeoutError:
         print(f"Таймаут {AI_GENERATE_TIMEOUT} сек. при генерации ответа для пользователя {name}")
         return f"⏳ Запрос не обработан за {AI_GENERATE_TIMEOUT} секунд. Попробуйте позже."
+
+    # Готовый ответ не должен теряться из-за истечения таймаута генерации во время записи БД.
+    if history is not None:
+        async with history.write_lock:
+            if server_id is not None and channel_id is not None:
+                try:
+                    await conversation_history.save_pair(
+                        server_id, channel_id, user_msg["content"], assistant_msg["content"]
+                    )
+                except Exception as exc:
+                    print(
+                        f"Ошибка сохранения пары диалога канала {channel_id}: {type(exc).__name__}"
+                    )
+            history.add_pair(user_msg, assistant_msg)
+
+    asyncio.create_task(llama_manager.index_messages(server_id, [user_msg, assistant_msg]))
+    return response
