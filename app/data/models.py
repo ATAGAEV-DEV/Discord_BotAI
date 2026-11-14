@@ -98,6 +98,21 @@ class ChannelMessage(Base):
     timestamp = Column(DateTime, default=func.now())
 
 
+class ConversationPair(Base):
+    """Завершённая пара user/assistant для восстановления памяти канала."""
+
+    __tablename__ = "conversation_pairs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    guild_id = Column(BigInteger, nullable=False)
+    channel_id = Column(BigInteger, nullable=False)
+    user_content = Column(Text, nullable=False)
+    assistant_content = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (Index("idx_conversation_pair_channel", "guild_id", "channel_id", "id"),)
+
+
 class UserMessageStats(Base):
     """Модель статистики сообщений пользователя."""
 
