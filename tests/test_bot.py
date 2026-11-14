@@ -184,3 +184,19 @@ async def test_initialize_guild_ai_configs_calls_load_all_and_ensure(
     assert ensure_mock.await_count == 2
     ensure_mock.assert_any_await(session_mock, 100)
     ensure_mock.assert_any_await(session_mock, 200)
+
+
+@pytest.mark.asyncio
+async def test_initialize_channel_histories_uses_shared_manager(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Стартовый прогрев заполняет тот же менеджер, который использует ai_generate."""
+    from app.core import bot, handlers
+
+    load = AsyncMock()
+    monkeypatch.setattr(handlers.llama_manager, "load_channel_histories", load)
+    guilds = [MagicMock(id=100), MagicMock(id=200)]
+
+    await bot.initialize_channel_histories(guilds)
+
+    load.assert_awaited_once_with([100, 200])
